@@ -1,0 +1,20 @@
+{
+  "_commentaire": "Organisation Test ARES — celle qui porte les 8 leads de leads_raw. Profil de référence : agence de services B2B, prudente (supervision, email seul).",
+  "workspace_id": "11111111-1111-1111-1111-111111111111",
+  "statut": "actif",
+  "objectif_principal": "Générer des rendez-vous qualifiés auprès d'agences de services B2B en croissance.",
+  "ton_de_voix": "professionnel",
+  "langue": "fr",
+  "zone": "Genève",
+  "autonomy_level": "supervision",
+  "canaux_actifs": ["email"],
+  "quotas_par_canal": { "email": 50 },
+  "seuil_confiance": 0.7,
+  "icp": {
+    "secteurs_inclus": ["conseil", "marketing", "communication"],
+    "secteurs_exclus": ["hotellerie", "restauration"],
+    "taille_min": 5,
+    "taille_max": 30,
+    "roles_cibles": ["fondateur", "decideur"]
+  }
+}

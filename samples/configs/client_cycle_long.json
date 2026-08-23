@@ -1,0 +1,24 @@
+{
+  "_commentaire": "Cycle de vente long : paliers étendus (jusqu'à 6 relances sur 60 jours) et seuil de confiance élevé. Démontre que les paliers viennent de la config, pas du code.",
+  "workspace_id": "25db28de-c378-4878-a51a-129016ccfc7f",
+  "statut": "actif",
+  "objectif_principal": "Placer des missions d'expertise technique auprès de directions informatiques.",
+  "ton_de_voix": "direct",
+  "langue": "fr",
+  "autonomy_level": "supervision",
+  "canaux_actifs": ["email", "linkedin"],
+  "quotas_par_canal": { "email": 25, "linkedin": 15 },
+  "seuil_confiance": 0.85,
+  "icp": {
+    "secteurs_inclus": ["developpement", "conseil"],
+    "secteurs_exclus": ["retail"],
+    "taille_min": 50,
+    "taille_max": 500,
+    "roles_cibles": ["directeur", "decideur"]
+  },
+  "paliers": [
+    { "seuil": 90, "palier": { "nom": "prioritaire", "relances_max": 6, "cadence": [0, 5, 12, 21, 33, 45, 60] } },
+    { "seuil": 60, "palier": { "nom": "standard", "relances_max": 3, "cadence": [0, 10, 25, 45] } },
+    { "seuil": 0,  "palier": { "nom": "veille", "relances_max": 1, "cadence": [0, 30] } }
+  ]
+}
