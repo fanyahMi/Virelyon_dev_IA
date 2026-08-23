@@ -197,6 +197,29 @@ def construire_plan(req: PlanRechercheRequest) -> PlanRechercheResponse:
         )
         diags.append(_DIAG_LINKEDIN)
 
+    # --- OpenStreetMap : découverte locale, gratuite et sans clé ------------
+    if "openstreetmap" in demandees:
+        decouverte.append(
+            BlocRecherche(
+                source="openstreetmap",
+                type="filtres",
+                filtres=_filtres(
+                    secteurs=[canoniser_secteur(x) for x in icp.secteurs_inclus],
+                    zone=req.zone,
+                ),
+            )
+        )
+        if not req.zone:
+            diags.append(
+                diag(
+                    "avertissement",
+                    "zone",
+                    "OpenStreetMap cherche dans une zone administrative : sans zone, "
+                    "aucune requête n'est construite.",
+                    "Renseigner la ville ou la région à prospecter.",
+                )
+            )
+
     # --- Site web : extraction (enrichissement) -----------------------------
     if "site_web" in demandees:
         enrichissement.append(

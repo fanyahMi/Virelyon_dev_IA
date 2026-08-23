@@ -36,7 +36,7 @@ def test_dry_run_n_appelle_rien_et_montre_les_requetes():
     apollo = next(r for r in res.par_source if r.source == "apollo")
     assert apollo.statut == "simule"
     assert apollo.nb_leads == 0
-    assert apollo.requetes[0].url.startswith("https://api.apollo.io")
+    assert apollo.requetes[0].url.endswith("/mixed_people/api_search")
     assert res.leads == []
 
 
@@ -55,7 +55,8 @@ def test_dry_run_ne_divulgue_jamais_la_cle():
 
 def test_dry_run_transmet_les_filtres_du_plan():
     res = _executer()
-    corps = next(r for r in res.par_source if r.source == "apollo").requetes[0].corps
+    # Apollo attend ses filtres en parametres d'URL, pas dans le corps.
+    corps = next(r for r in res.par_source if r.source == "apollo").requetes[0].params
     assert corps["organization_num_employees_ranges"] == ["5,30"]
     assert "Founder" in corps["person_titles"]
     assert corps["per_page"] == 25
@@ -63,7 +64,7 @@ def test_dry_run_transmet_les_filtres_du_plan():
 
 def test_limite_plafonne_la_taille_de_page():
     res = _executer(limite=200)
-    corps = next(r for r in res.par_source if r.source == "apollo").requetes[0].corps
+    corps = next(r for r in res.par_source if r.source == "apollo").requetes[0].params
     assert corps["per_page"] == 100  # plafond Apollo
 
 

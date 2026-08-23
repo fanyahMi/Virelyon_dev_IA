@@ -101,7 +101,12 @@ def test_hunter_et_site_web_sont_de_l_enrichissement():
 
 def test_sans_sources_toutes_les_sources_sont_planifiees():
     plan = _plan(secteurs_inclus=["marketing"], roles_cibles=["fondateur"])
-    assert {b.source for b in plan.decouverte} == {"google_maps", "apollo", "linkedin"}
+    assert {b.source for b in plan.decouverte} == {
+        "google_maps",
+        "apollo",
+        "linkedin",
+        "openstreetmap",
+    }
     assert {b.source for b in plan.enrichissement} == {"site_web", "hunter"}
 
 

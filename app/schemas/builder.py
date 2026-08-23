@@ -85,7 +85,7 @@ class ICPValiderResponse(BaseModel):
 
 # ----- Plan de recherche (ICP → requêtes exploitables par source) -----
 # Sources de DÉCOUVERTE : trouvent des entreprises qu'on ne connaît pas encore.
-SOURCES_DECOUVERTE = ("google_maps", "apollo", "linkedin")
+SOURCES_DECOUVERTE = ("google_maps", "apollo", "linkedin", "openstreetmap")
 # Sources d'ENRICHISSEMENT : complètent une entreprise DÉJÀ trouvée.
 SOURCES_ENRICHISSEMENT = ("site_web", "hunter")
 SOURCES_CONNUES = SOURCES_DECOUVERTE + SOURCES_ENRICHISSEMENT

@@ -20,6 +20,8 @@ from app.schemas.sourcing import RequeteHTTP
 
 CLE_MASQUEE = "***"
 TIMEOUT = httpx.Timeout(20.0)
+# Overpass (OpenStreetMap) calcule ses requêtes à la volée : plus lent.
+TIMEOUT_LONG = httpx.Timeout(90.0)
 
 
 class Connecteur:

@@ -16,6 +16,8 @@ class RequeteHTTP(BaseModel):
     methode: str
     url: str
     entetes: dict = Field(default_factory=dict)
+    # Paramètres d'URL. Apollo attend ses filtres ici, pas dans le corps.
+    params: dict = Field(default_factory=dict)
     corps: dict = Field(default_factory=dict)
 
 

@@ -27,6 +27,7 @@ from app.sourcing.apollo import Apollo
 from app.sourcing.base import Connecteur
 from app.sourcing.hunter import Hunter
 from app.sourcing.linkedin import LinkedIn
+from app.sourcing.openstreetmap import OpenStreetMap
 from app.sourcing.places import Places
 from app.sourcing.site_web import SiteWeb
 
@@ -44,7 +45,7 @@ def _connecteurs() -> dict[str, Connecteur]:
     son motif — c'est ce qui évite qu'elle disparaisse silencieusement."""
     s = get_settings()
     tous = (Apollo(s.apollo_api_key), Places(s.google_places_api_key),
-            Hunter(s.hunter_api_key), SiteWeb(), LinkedIn())
+            OpenStreetMap(), Hunter(s.hunter_api_key), SiteWeb(), LinkedIn())
     return {c.source: c for c in tous}
 
 
