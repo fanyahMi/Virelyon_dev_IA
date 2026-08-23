@@ -6,10 +6,14 @@ C'est le backend qui enregistre le résultat dans `workspace_icp_config`.
 """
 from fastapi import APIRouter, Depends
 
+from uuid import UUID
+
+from app.builder import config as config_logic
 from app.builder import icp as icp_logic
 from app.builder import plan_recherche as plan_logic
 from app.core.security import verify_caller
 from app.gateway.router import Gateway, get_gateway
+from app.schemas.config import ConfigAgent
 from app.schemas.builder import (
     ICPExtraireRequest,
     ICPExtraireResponse,
@@ -40,6 +44,16 @@ def valider_icp(req: ICPValiderRequest):
     Logique pure, aucun appel LLM — utilisable à chaque frappe côté front.
     """
     return icp_logic.valider_icp(req)
+
+
+@router.get("/config/{workspace_id}", response_model=ConfigAgent)
+def get_config(workspace_id: UUID):
+    """Configuration du client — ce qu'ARES doit savoir pour se comporter comme lui.
+
+    Un client sans configuration reçoit un défaut prudent (supervision, email
+    seul) : c'est l'état normal d'un compte qui vient d'être créé, pas une erreur.
+    """
+    return config_logic.charger_config(workspace_id)
 
 
 @router.post("/plan-recherche", response_model=PlanRechercheResponse)

@@ -81,13 +81,32 @@ class ScoreResponse(BaseModel):
 
 
 # ----- Génération de message (§4.5 / prompt §5.2) -----
+class EchangeHistorique(BaseModel):
+    """Un échange déjà eu avec ce prospect.
+
+    Structuré plutôt qu'une simple chaîne : pour rédiger une relance juste, le
+    modèle doit savoir qui a parlé, quand et sur quel canal — « je reviens vers
+    vous après notre échange du 15 » n'est possible qu'avec la date.
+    """
+    texte: str
+    role: str = "ares"  # "ares" ou "prospect"
+    canal: Optional[str] = None
+    date: Optional[str] = None
+
+
 class GenerateRequest(BaseModel):
     workspace_id: UUID
     lead: Lead
     etape: str = "J0"
     ton_de_voix: str = "professionnel"
-    historique: list[str] = Field(default_factory=list)
+    historique: list[EchangeHistorique] = Field(default_factory=list)
     language: str = "fr"
+    # Mission que le client a décrite dans l'Agent Builder. Sans elle, deux
+    # clients différents obtiennent des messages quasi identiques.
+    objectif_principal: str = ""
+    # Canaux que le client a réellement connectés. Vide = pas de contrainte.
+    # Sans ça, le modèle peut proposer un canal indisponible.
+    canaux_actifs: list[str] = Field(default_factory=list)
 
 
 class GenerateResult(BaseModel):

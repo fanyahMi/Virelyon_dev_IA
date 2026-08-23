@@ -74,16 +74,24 @@ async def generate(gw: Gateway, req: GenerateRequest) -> GenerateResponse:
             "lead": req.lead.model_dump(mode="json"),
             "etape": req.etape,
             "ton_de_voix": req.ton_de_voix,
-            "historique": req.historique,
+            "historique": [e.model_dump(mode="json") for e in req.historique],
             "langue": req.language,
+            "objectif_principal": req.objectif_principal or None,
+            "canaux_autorises": req.canaux_actifs or None,
         }
     )
     data, info = await gw.complete_json(
         "reasoning", GENERATE_SYSTEM, user, req.workspace_id, max_tokens=1500
     )
+    # Le modèle est prié de respecter les canaux autorisés, mais on ne s'en
+    # remet pas à sa bonne volonté : n8n recevrait un canal non connecté.
+    canal = str(data.get("canal", "") or "").strip().lower()
+    autorises = [c.lower() for c in req.canaux_actifs]
+    if autorises and canal not in autorises:
+        canal = autorises[0]
     return GenerateResponse(
         texte=str(requis(data, "texte")),
-        canal=str(data.get("canal", "email")),
+        canal=canal or "email",
         meta=meta_depuis(info),
     )
 
