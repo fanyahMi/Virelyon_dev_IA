@@ -1,8 +1,27 @@
 """Fixtures de test. Le provider LLM est mocké : aucun appel réseau, aucune clé requise."""
 import os
 
-# Forcer une clé interne connue AVANT tout import de l'app (précède le .env).
-os.environ["INTERNAL_API_KEY"] = "test-key"
+# Environnement de test figé AVANT tout import de l'app.
+# Les variables d'environnement priment sur le .env : les tests ne doivent jamais
+# dépendre de la configuration locale du développeur (fournisseur LLM, plafonds,
+# modèles). Sans ça, brancher Groq dans son .env casse la suite de tests.
+os.environ.update(
+    INTERNAL_API_KEY="test-key",
+    LLM_PROVIDER="anthropic",
+    LLM_BASE_URL="",
+    LLM_API_KEY="",
+    LLM_MODEL_FAST="",
+    LLM_MODEL_REASONING="",
+    LLM_PRIX_ENTREE="0",
+    LLM_PRIX_SORTIE="0",
+    MAX_COST_PER_WORKSPACE="0",
+    ANTHROPIC_API_KEY="",
+    # Clés de sourcing figées elles aussi : sinon brancher une vraie clé Apollo
+    # dans son .env fait partir de vrais appels réseau pendant les tests.
+    APOLLO_API_KEY="",
+    GOOGLE_PLACES_API_KEY="",
+    HUNTER_API_KEY="",
+)
 
 import pytest
 from fastapi.testclient import TestClient

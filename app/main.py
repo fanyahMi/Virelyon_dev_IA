@@ -3,15 +3,19 @@
 Sécurité : PAS de CORS (jamais appelé par un navigateur), authentification
 service-à-service sur tous les endpoints métier (voir core/security.py).
 """
-import anthropic
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.v1.endpoints import health
 from app.api.v1.router import api_router
-from app.core.config import get_settings
+from app.core.config import ConfigurationModeleManquante, get_settings
 from app.gateway.cost_tracker import CostLimitExceeded
-from app.gateway.provider import LLMNotConfiguredError, ReponseLLMInvalide
+from app.gateway.provider import (
+    LLMIndisponible,
+    LLMNotConfiguredError,
+    LLMSurcharge,
+    ReponseLLMInvalide,
+)
 
 app = FastAPI(
     title="virelyon-ai-service",
@@ -43,9 +47,32 @@ async def _llm_non_configure(_: Request, exc: LLMNotConfiguredError) -> JSONResp
     return _erreur(503, f"LLM non configuré : {exc}")
 
 
-@app.exception_handler(anthropic.APIError)
-async def _llm_indisponible(_: Request, exc: anthropic.APIError) -> JSONResponse:
-    return _erreur(503, f"Fournisseur LLM indisponible ({exc.__class__.__name__}).")
+@app.exception_handler(ConfigurationModeleManquante)
+async def _modele_manquant(_: Request, exc: ConfigurationModeleManquante) -> JSONResponse:
+    return _erreur(503, f"Configuration LLM incomplète : {exc}")
+
+
+@app.exception_handler(LLMSurcharge)
+async def _llm_surcharge(_: Request, exc: LLMSurcharge) -> JSONResponse:
+    return _erreur(429, f"Fournisseur LLM surchargé : {exc}")
+
+
+@app.exception_handler(LLMIndisponible)
+async def _llm_en_erreur(_: Request, exc: LLMIndisponible) -> JSONResponse:
+    return _erreur(503, f"Fournisseur LLM indisponible : {exc}")
+
+
+# Le SDK Anthropic est optionnel : son gestionnaire n'est enregistré que si le
+# paquet est installé. Le service tourne sans lui.
+try:
+    import anthropic
+
+    @app.exception_handler(anthropic.APIError)
+    async def _llm_anthropic_en_erreur(_: Request, exc: Exception) -> JSONResponse:
+        return _erreur(503, f"Fournisseur LLM indisponible ({exc.__class__.__name__}).")
+
+except ImportError:  # pragma: no cover - dépend de l'installation
+    pass
 
 
 @app.exception_handler(ReponseLLMInvalide)

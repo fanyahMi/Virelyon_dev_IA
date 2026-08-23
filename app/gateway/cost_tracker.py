@@ -6,7 +6,7 @@ Stockage en mémoire (indépendant du backend). Note : remis à zéro au redéma
 from collections import defaultdict
 from threading import Lock
 
-from app.core.config import MODEL_PRICING
+from app.core.config import prix_pour
 
 
 class CostLimitExceeded(RuntimeError):
@@ -22,7 +22,7 @@ class CostTracker:
 
     @staticmethod
     def compute_cost(model: str, in_tok: int, out_tok: int) -> float:
-        p_in, p_out = MODEL_PRICING.get(model, (0.0, 0.0))
+        p_in, p_out = prix_pour(model)
         return in_tok / 1_000_000 * p_in + out_tok / 1_000_000 * p_out
 
     def record(self, workspace_id, model: str, in_tok: int, out_tok: int) -> float:

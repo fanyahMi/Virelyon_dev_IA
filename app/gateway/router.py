@@ -11,7 +11,7 @@ import re
 
 from fastapi import Depends
 
-from app.core.config import TIER_TO_MODEL, get_settings
+from app.core.config import get_settings, modele_pour
 from app.gateway.cache import response_cache
 from app.gateway.cost_tracker import cost_tracker
 from app.gateway.provider import LLMProvider, ReponseLLMInvalide, get_provider
@@ -39,7 +39,7 @@ class Gateway:
         self, tier: str, system: str, user: str, workspace_id, max_tokens: int | None = None
     ) -> tuple[dict, dict]:
         settings = get_settings()
-        model = TIER_TO_MODEL[tier]
+        model = modele_pour(tier)
         mt = max_tokens or settings.default_max_tokens
 
         # Cache (§5.4) : un appel identique déjà vu est renvoyé gratuitement.
