@@ -1,0 +1,17 @@
+{
+  "_commentaire": "Config de test APEX — Niveau 2 Semi-autonome, ton amical, outil CRM actif, plafond d'échanges personnalisé.",
+  "workspace_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "statut": "actif",
+  "ton_de_voix": "amical",
+  "langue": "fr",
+  "canaux_actifs": ["chat_web", "email"],
+  "quotas_par_canal": { "chat_web": 200, "email": 100 },
+  "niveau_autonomie": "semi_autonome",
+  "outils_actifs": ["get_customer_context"],
+  "seuil_pertinence": 0.55,
+  "seuil_confiance_semi_autonome": 0.8,
+  "regles_escalade": [
+    { "type_regle": "nb_echanges_sans_resolution", "valeur_seuil": { "seuil": 4 }, "actif": true },
+    { "type_regle": "sentiment_negatif", "valeur_seuil": {}, "actif": true }
+  ]
+}

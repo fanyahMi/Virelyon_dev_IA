@@ -5,6 +5,13 @@ pydantic-settings>=2.4.0
 httpx>=0.27.0
 pytest>=8.0.0
 
+# Backend unifié (CDCF v3.0) : accès direct Postgres/Supabase + migrations.
+sqlalchemy[asyncio]>=2.0.30
+asyncpg>=0.29.0
+alembic>=1.13.0
+# Type de colonne pgvector pour SQLAlchemy (recherche vectorielle RAG).
+pgvector>=0.3.0
+
 # Fournisseur LLM par defaut : n'importe quelle API compatible /chat/completions
 # (Mistral, Groq, OpenAI, Ollama, OpenRouter...) via httpx, deja present.
 # Claude est OPTIONNEL : ne decommenter que si LLM_PROVIDER=anthropic.

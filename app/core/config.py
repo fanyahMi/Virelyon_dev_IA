@@ -14,6 +14,19 @@ class Settings(BaseSettings):
     # Secret partagé backend <-> IA (authentification service-à-service)
     internal_api_key: str = "dev-secret-change-me"
 
+    # --- Base de données (CDCF Unifié v3.0) -----------------------------------
+    # Postgres/Supabase, accès direct via SQLAlchemy async + asyncpg.
+    # Format : postgresql+asyncpg://user:password@host:port/dbname
+    # Vide par défaut : app/db/session.py refuse explicitement toute tentative
+    # d'accès DB tant qu'elle n'est pas renseignée (DatabaseNotConfiguredError),
+    # plutôt que d'échouer à l'import ou silencieusement.
+    database_url: str = ""
+    # Dimension du vecteur pgvector (app/db/models_apex.py). PROVISOIRE :
+    # le fournisseur d'embedding n'est pas encore choisi (1536 = convention
+    # OpenAI text-embedding-3-small/ada-002). La changer exige une nouvelle
+    # migration Alembic, pas seulement une variable d'environnement.
+    embedding_dimension: int = 1536
+
     ai_env: str = "development"
     default_max_tokens: int = 1024
 

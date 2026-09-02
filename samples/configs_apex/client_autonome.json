@@ -1,0 +1,16 @@
+{
+  "_commentaire": "Config de test APEX — Niveau 3 Autonome, ton formel, aucun outil CRM connecté.",
+  "workspace_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "statut": "actif",
+  "ton_de_voix": "formel",
+  "langue": "fr",
+  "canaux_actifs": ["chat_web", "whatsapp"],
+  "quotas_par_canal": { "chat_web": 500, "whatsapp": 150 },
+  "niveau_autonomie": "autonome",
+  "outils_actifs": [],
+  "seuil_pertinence": 0.5,
+  "seuil_confiance_semi_autonome": 0.8,
+  "regles_escalade": [
+    { "type_regle": "nb_echanges_sans_resolution", "valeur_seuil": { "seuil": 5 }, "actif": true }
+  ]
+}

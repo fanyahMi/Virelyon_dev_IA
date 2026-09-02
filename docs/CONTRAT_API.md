@@ -63,14 +63,14 @@
 }
 ```
 
-**Meta** (jointe à chaque réponse issue d'un appel LLM)
+**Meta** (jointe à chaque réponse issue d'un appel LLM — `null` quand la décision est déterministe, sans appel LLM)
 ```json
 { "model_used": "claude-sonnet-4-6", "usage": { "input_tokens": 512, "output_tokens": 80 }, "cost_estimate": 0.0021, "cached": false }
 ```
 
 ---
 
-## 4. Endpoints
+## 4. Endpoints — Agent ARES (prospection)
 
 ### `POST /api/v1/ares/qualify` — Qualification (Claude Sonnet)
 **Entrée**
@@ -126,6 +126,88 @@
 ```json
 { "action": "continuer", "justification": "score correct, marge de relance", "meta": { … } }
 ```
+
+---
+
+## 4bis. Endpoints — Agent APEX (support client, CDCF APEX v2.0)
+
+Même principe stateless : les fragments de la base de connaissances sont
+retrouvés en amont par pgvector (Big Data/n8n) et fournis dans la requête —
+APEX ne touche jamais pgvector ni la base de données. Détail complet des
+garde-fous et du flux : `docs/APEX.md`.
+
+### `POST /api/v1/apex/classify` — Compréhension & recherche contextuelle (Claude Haiku)
+**Entrée**
+```json
+{ "workspace_id": "UUID", "message_entrant": "Comment obtenir un remboursement ?",
+  "historique": [], "seuil_pertinence": 0.5,
+  "fragments_candidats": [ { "chunk_texte": "Les remboursements se font sous 14 jours.", "score": 0.7 } ] }
+```
+**Sortie** — `intention` ∈ { question_produit, reclamation, hors_scope, demande_humain }.
+`necessite_escalade` est calculé **en Python** à partir du seuil configuré, jamais laissé au modèle.
+```json
+{ "intention": "question_produit",
+  "fragments_pertinents": [ { "chunk_texte": "Les remboursements se font sous 14 jours.", "score": 0.92 } ],
+  "confiance": 0.85, "langue_detectee": "fr", "necessite_escalade": false, "meta": { … } }
+```
+
+### `POST /api/v1/apex/generate` — Génération de réponse, avec sélection d'outil intégrée (Claude Sonnet)
+**Entrée** — `seuil_pertinence` doit reprendre `agent_config.seuil_pertinence` du workspace
+```json
+{ "workspace_id": "UUID",
+  "fragments_pertinents": [ { "chunk_texte": "Les remboursements se font sous 14 jours.", "score": 0.92 } ],
+  "historique": [], "ton_de_voix": "formel", "langue": "fr",
+  "outils_actifs": ["get_customer_context"], "resultat_outil": null, "seuil_pertinence": 0.5 }
+```
+**Sortie** — si `appel_outil_demande` est rempli, `texte` est vide : le backend/n8n doit
+exécuter l'outil demandé puis rappeler `/apex/generate` avec `resultat_outil` rempli.
+```json
+{ "texte": "Le remboursement est traité sous 14 jours ouvrés. Souhaitez-vous que je vous mette en contact avec un conseiller ?",
+  "confiance": 0.9, "justification": "fondé sur le fragment fourni", "necessite_escalade": false,
+  "appel_outil_demande": null, "meta": { … } }
+```
+**Règle absolue, vérifiée EN PYTHON (pas seulement dans le prompt)** : `fragments_pertinents`
+vide **OU** tous les scores sous `seuil_pertinence` ⇒ **aucun appel LLM**, `meta: null`,
+`necessite_escalade: true` — APEX ne répond jamais depuis sa connaissance générale :
+```json
+{ "texte": "", "confiance": 0.0, "necessite_escalade": true,
+  "justification": "Aucun contenu suffisamment pertinent dans la base de connaissances (seuil de pertinence non atteint) — garde-fou anti-hallucination …",
+  "appel_outil_demande": null, "meta": null }
+```
+
+### `POST /api/v1/apex/escalade` — Détection de confiance & décision d'escalade (Claude Sonnet)
+**Entrée**
+```json
+{ "workspace_id": "UUID", "message_entrant": "Toujours pas de réponse, c'est inadmissible !",
+  "historique": [], "intention": "reclamation", "regles_escalade": [],
+  "nb_echanges_sans_resolution": 2, "tentatives_contournement_precedentes": 0 }
+```
+**Sortie** — `decision` ∈ { continuer, brouillon, escalade }. `meta: null` si la décision est
+**déterministe** (demande humaine explicite, plafond d'échanges atteint, récidive de contournement).
+```json
+{ "sentiment": "negatif", "declencheurs_actifs": ["sentiment_negatif"], "tentative_contournement": false,
+  "decision": "escalade", "justification": "sentiment négatif marqué", "meta": { … } }
+```
+
+### `POST /api/v1/apex/decide-action` — Décision finale (logique pure, sans LLM)
+**Entrée**
+```json
+{ "niveau_autonomie": "semi_autonome", "intention": "question_produit", "confiance": 0.9,
+  "decision_escalade": "continuer", "seuil_confiance_semi_autonome": 0.8, "cloture_demandee": false }
+```
+**Sortie** — `action` ∈ { repondre, brouillon, escalade, cloturer }
+```json
+{ "action": "repondre", "justification": "Niveau Semi-autonome : intention question_produit à confiance élevée — envoi automatique." }
+```
+
+### `GET /api/v1/apex/config/{workspace_id}` — Configuration du client (aucun LLM)
+```json
+{ "workspace_id": "UUID", "statut": "actif", "ton_de_voix": "amical", "langue": "fr",
+  "canaux_actifs": ["chat_web", "email"], "quotas_par_canal": { "chat_web": 200 },
+  "niveau_autonomie": "semi_autonome", "outils_actifs": ["get_customer_context"],
+  "seuil_pertinence": 0.55, "seuil_confiance_semi_autonome": 0.8, "regles_escalade": [] }
+```
+> Un client sans configuration reçoit le défaut prudent : `statut: configuration_incomplete`, `niveau_autonomie: supervise`, `canaux_actifs: ["chat_web"]` — jamais d'envoi automatique tant que le client n'a rien réglé.
 
 ---
 
@@ -230,7 +312,7 @@ Garanties :
 
 ---
 
-## 5. Exemple d'appel
+## 5bis. Exemple d'appel
 ```bash
 curl -X POST http://localhost:8080/api/v1/ares/score \
   -H "X-Internal-Key: $INTERNAL_API_KEY" -H "Content-Type: application/json" \
@@ -242,11 +324,13 @@ curl -X POST http://localhost:8080/api/v1/ares/score \
 ---
 
 ## 6. Ce que le backend doit faire de son côté
-- **Persister** les résultats (leads, statuts, `messages`, `lead_events`) — l'IA ne touche pas la base.
+- **Persister** les résultats (leads, statuts, `messages`, `lead_events`, `conversations`, `messages_apex`, `conversation_events`) — l'IA ne touche pas la base.
 - **Appliquer l'isolation multi-tenant** (RLS) — l'IA ne fait que recevoir `workspace_id`.
 - **Fournir l'ICP** (depuis `workspace_icp_config`) dans les requêtes qualify/score.
+- **Fournir les fragments candidats APEX** (recherche vectorielle pgvector faite en amont, par n8n/Big Data) dans les requêtes `/apex/classify`.
+- **Exécuter les outils APEX** (ex. `get_customer_context` contre le CRM du client) quand `/apex/generate` renvoie `appel_outil_demande` — l'IA ne fait qu'décider, jamais qu'exécuter (§2.4 du CDCF APEX).
 - **Gérer les secrets de canal** (Orange, CRM) — hors périmètre IA.
-- **Orchestrer** (séquençage, relances, envois) via n8n ; appeler l'IA aux points de décision.
+- **Orchestrer** (séquençage, relances, envois, réception multicanal APEX) via n8n ; appeler l'IA aux points de décision.
 
 ## 7. Ce que le backend n'a PAS à faire
 - Connaître la structure interne du service IA (seul le contrat ci-dessus compte).

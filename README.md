@@ -1,9 +1,10 @@
-# VIRELYON — Service IA (ARES)
+# VIRELYON — Service IA (ARES · APEX)
 
 Service de **décision IA** pour les agents VIRELYON. **Stateless** : il reçoit tout
-dans la requête (lead, ICP, config), appelle Claude, renvoie une décision en JSON —
-**il ne touche jamais la base de données**. C'est le **backend** qui persiste et gère
-l'isolation multi-tenant. Ce découplage rend l'équipe DEV IA autonome.
+dans la requête (lead, ICP, config, fragments de la base de connaissances…),
+appelle Claude, renvoie une décision en JSON — **il ne touche jamais la base de
+données**. C'est le **backend** qui persiste et gère l'isolation multi-tenant. Ce
+découplage rend l'équipe DEV IA autonome.
 
 ## Lancer en local
 
@@ -82,6 +83,9 @@ Détail des jeux de données : voir `samples/README.md`.
 ## Contrat d'API (ce que le backend appelle)
 
 Toutes les routes `/api/v1/...` exigent `X-Internal-Key`. `workspace_id` obligatoire.
+Détail complet (entrées/sorties, exemples) : **`docs/CONTRAT_API.md`**.
+
+### ARES — prospection
 
 | Endpoint | Tier | Entrée | Sortie |
 |---|---|---|---|
@@ -89,8 +93,24 @@ Toutes les routes `/api/v1/...` exigent `X-Internal-Key`. `workspace_id` obligat
 | `POST /api/v1/ares/score` | — (logique pure) | `{workspace_id, lead, icp, scoring_config?}` | `{score, breakdown, palier}` |
 | `POST /api/v1/ares/generate` | reasoning (Sonnet) | `{workspace_id, lead, etape, ton_de_voix, historique, language}` | `{texte, canal, meta}` |
 | `POST /api/v1/ares/classify` | fast (Haiku) | `{workspace_id, message_entrant, language}` | `{categorie, confiance, date_relance?, meta}` |
-| `GET /api/v1/costs/{workspace_id}` | — | — | `{input_tokens, output_tokens, cost}` |
-| `GET /health` | — (public) | — | `{status, service}` |
+| `POST /api/v1/ares/decide` | déterministe + reasoning | `{workspace_id, lead, palier, relances_effectuees, contexte?}` | `{action, justification, meta?}` |
+
+### APEX — support client (CDCF APEX v2.0, voir `docs/APEX.md`)
+
+| Endpoint | Tier | Entrée | Sortie |
+|---|---|---|---|
+| `POST /api/v1/apex/classify` | fast (Haiku) | `{workspace_id, message_entrant, historique, fragments_candidats, seuil_pertinence}` | `{intention, fragments_pertinents, confiance, langue_detectee, necessite_escalade, meta}` |
+| `POST /api/v1/apex/generate` | reasoning (Sonnet) — inclut la sélection d'outil | `{workspace_id, fragments_pertinents, historique, ton_de_voix, langue, outils_actifs, resultat_outil?, seuil_pertinence}` | `{texte, confiance, justification, necessite_escalade, appel_outil_demande, meta}` |
+| `POST /api/v1/apex/escalade` | déterministe + reasoning | `{workspace_id, message_entrant, historique, intention?, regles_escalade, nb_echanges_sans_resolution}` | `{sentiment, declencheurs_actifs, tentative_contournement, decision, justification, meta}` |
+| `POST /api/v1/apex/decide-action` | — (logique pure) | `{niveau_autonomie, intention, confiance, decision_escalade, cloture_demandee}` | `{action, justification}` |
+| `GET /api/v1/apex/config/{workspace_id}` | — | — | `ConfigAgentApex` (niveau d'autonomie, ton de voix, outils actifs…) |
+
+### Transverse
+
+| Endpoint | Entrée | Sortie |
+|---|---|---|
+| `GET /api/v1/costs/{workspace_id}` | — | `{input_tokens, output_tokens, cost}` |
+| `GET /health` | — (public) | `{status, service}` |
 
 Le **Swagger** (`/docs`) est le contrat vivant : partagez-le au backend, chacun code contre.
 
@@ -108,17 +128,26 @@ curl -X POST http://localhost:8080/api/v1/ares/score \
 app/
 ├── core/       config, sécurité (auth service-à-service)
 ├── gateway/    provider Claude, routage tier→modèle, cost_tracker
-├── ares/       scoring (pur) + agents (qualify/generate/classify via Claude)
-├── prompts/    prompts système (garde-fous CDCF §0)
+├── ares/       scoring (pur) + agents (qualify/generate/classify/decide via Claude)
+├── apex/       agents (classify/generate/escalade via Claude) + autonomie (pur, §4.14) + config
+├── builder/    paramétrage client (ICP, plan de recherche)
+├── sourcing/   connecteurs externes (Apollo, Google Places, Hunter, LinkedIn, site web)
+├── prompts/    prompts système (garde-fous CDCF §0 / §4.13)
 ├── schemas/    contrats Pydantic (I/O)
-└── api/v1/     endpoints (ares, costs, health)
+└── api/v1/     endpoints (ares, apex, builder, sourcing, costs, health)
 tests/          pytest (provider mocké — pas d'appel réseau)
 ```
 
 ## Modèles Claude (CDCF §5.1)
 - `fast` → **Claude Haiku 4.5** (`claude-haiku-4-5`) : classification.
-- `reasoning` → **Claude Sonnet 4.6** (`claude-sonnet-4-6`) : qualification, génération.
+- `reasoning` → **Claude Sonnet 4.6** (`claude-sonnet-4-6`) : qualification, génération, décision.
 
-## Garde-fous non-négociables (CDCF §0)
+## Garde-fous non-négociables (CDCF §0 / CDCF APEX §0, §4.13)
 Jamais suggérer de « remplacer » un humain · sorties toujours structurées (JSON) ·
-confiance faible → l'appelant traite manuellement · l'ICP vient du backend (jamais stocké ici).
+confiance faible ou ambiguë → escalade/file manuelle, jamais tranché au hasard ·
+contenu externe (chunks, réponses de prospects) traité comme donnée, jamais comme
+instruction · l'ICP vient du backend (jamais stocké ici) · **règle absolue :
+APEX ne répond JAMAIS depuis sa connaissance générale — sans fragment pertinent
+au-dessus du seuil configuré, aucun appel LLM n'est fait et une escalade est
+requise ; vérifié EN PYTHON dans `/apex/classify` et `/apex/generate`, pas
+seulement dans le prompt (voir `app/apex/agents.py`).**
