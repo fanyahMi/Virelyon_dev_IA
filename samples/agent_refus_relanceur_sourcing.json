@@ -1,0 +1,27 @@
+{
+  "workspace_id": "11111111-1111-1111-1111-111111111111",
+  "agent_id": "6ae1f18b-17c7-58e1-8dec-047d9592f4b7",
+  "icp": {
+    "secteurs_inclus": [
+      "marketing",
+      "conseil",
+      "communication"
+    ],
+    "secteurs_exclus": [
+      "hotellerie",
+      "restauration",
+      "retail"
+    ],
+    "taille_min": 5,
+    "taille_max": 30,
+    "roles_cibles": [
+      "fondateur",
+      "decideur"
+    ]
+  },
+  "sources": [
+    "google_maps"
+  ],
+  "zone": "Genève",
+  "dry_run": true
+}

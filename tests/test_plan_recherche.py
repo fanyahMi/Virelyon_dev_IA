@@ -75,6 +75,91 @@ def test_titres_bilingues_depuis_les_roles():
     assert "CEO" in titres and "Gérant" in titres
 
 
+# ----- Hunter Discover (découverte) -----------------------------------------
+def test_hunter_discover_une_entree_par_secteur():
+    # Discover ne rappelle pas l'industrie trouvée : un secteur par requête est
+    # le seul moyen d'attribuer un secteur au lead sans le deviner.
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["developpement", "design"])
+    industries = _bloc(plan, "hunter_discover").filtres["industries_par_secteur"]
+    assert industries == {
+        "developpement": ["IT Services and IT Consulting", "Software Development"],
+        "design": ["Design Services", "Graphic Design"],
+    }
+
+
+def test_hunter_discover_signale_un_secteur_hors_nomenclature():
+    # La nomenclature de Hunter est fermée : un secteur personnalisé y est
+    # introuvable, et le taire donnerait un plan trompeur.
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["plomberie industrielle"])
+    assert _bloc(plan, "hunter_discover").filtres == {}
+    assert any(
+        d.niveau == "avertissement" and "nomenclature fermée" in d.message
+        for d in plan.diagnostics
+    )
+
+
+def test_hunter_discover_traduit_la_zone_en_pays():
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["marketing"], zone="France")
+    assert _bloc(plan, "hunter_discover").filtres["headquarters_location"] == [
+        {"country": "FR"}
+    ]
+
+
+def test_hunter_discover_accepte_ville_et_pays():
+    plan = _plan(
+        sources=["hunter_discover"], secteurs_inclus=["marketing"], zone="Lyon, France"
+    )
+    assert _bloc(plan, "hunter_discover").filtres["headquarters_location"] == [
+        {"country": "FR", "city": "Lyon"}
+    ]
+    assert any("orthographe qu'emploie Hunter" in d.message for d in plan.diagnostics)
+
+
+def test_hunter_discover_avertit_sur_une_zone_incomprise():
+    # Hunter exige un pays : une ville seule ne peut pas être géolocalisée, et
+    # inventer le pays ferait prospecter le mauvais marché en silence.
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["marketing"], zone="Lyon")
+    assert "headquarters_location" not in _bloc(plan, "hunter_discover").filtres
+    assert any(d.niveau == "avertissement" and d.champ == "zone" for d in plan.diagnostics)
+
+
+def test_hunter_discover_n_invente_jamais_de_zone():
+    # Contrainte CDCF §8 : aucun ciblage géographique déduit.
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["marketing"])
+    assert "headquarters_location" not in _bloc(plan, "hunter_discover").filtres
+
+
+def test_hunter_discover_couvre_toutes_les_tranches_chevauchees():
+    # Hunter accepte une LISTE de tranches : « 5 à 30 » n'a pas à en sacrifier une.
+    plan = _plan(
+        sources=["hunter_discover"], secteurs_inclus=["marketing"], taille_min=5, taille_max=30
+    )
+    assert _bloc(plan, "hunter_discover").filtres["headcount"] == ["1-10", "11-50"]
+
+
+def test_hunter_discover_borne_ouverte():
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["marketing"], taille_max=10)
+    assert _bloc(plan, "hunter_discover").filtres["headcount"] == ["1-10"]
+
+
+def test_hunter_discover_sans_taille_n_envoie_pas_de_tranche():
+    plan = _plan(sources=["hunter_discover"], secteurs_inclus=["marketing"])
+    assert "headcount" not in _bloc(plan, "hunter_discover").filtres
+
+
+# ----- Hunter Domain Search (enrichissement) ---------------------------------
+def test_hunter_traduit_les_roles_en_niveaux_hierarchiques():
+    plan = _plan(
+        sources=["hunter"], secteurs_inclus=["marketing"], roles_cibles=["fondateur", "manager"]
+    )
+    assert _bloc(plan, "hunter").filtres["seniority"] == ["executive", "senior"]
+
+
+def test_hunter_sans_role_n_envoie_aucun_niveau():
+    plan = _plan(sources=["hunter"], secteurs_inclus=["marketing"])
+    assert "seniority" not in _bloc(plan, "hunter").filtres
+
+
 # ----- LinkedIn : réserve juridique -----------------------------------------
 def test_linkedin_porte_un_avertissement():
     plan = _plan(sources=["linkedin"], secteurs_inclus=["marketing"], roles_cibles=["fondateur"])
@@ -105,7 +190,7 @@ def test_sans_sources_toutes_les_sources_sont_planifiees():
         "google_maps",
         "apollo",
         "linkedin",
-        "openstreetmap",
+        "hunter_discover",
     }
     assert {b.source for b in plan.enrichissement} == {"site_web", "hunter"}
 

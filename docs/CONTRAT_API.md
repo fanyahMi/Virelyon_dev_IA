@@ -15,9 +15,37 @@
 | **Auth** | header **`X-Internal-Key: <secret>`** sur toutes les routes `/api/v1/...` |
 | **Content-Type** | `application/json` |
 | **Multi-tenant** | `workspace_id` (UUID) **obligatoire** dans chaque requête métier |
+| **Multi-agent** | `agent_id` (UUID) **facultatif** — voir §1 bis |
 | **CORS** | désactivé (appels **server-à-server** uniquement) |
 
 > `/health` est public (pas de header). Tout le reste exige `X-Internal-Key`.
+
+---
+
+## 1 bis. Les agents d'un client
+
+Un workspace n'a pas *un* ARES mais une **équipe d'agents nommés**, chacun tenant un
+poste. Deux rôles sont ouverts aujourd'hui :
+
+| Rôle | Métier | Capacités |
+|---|---|---|
+| `prospecteur` | trouver, trier, engager le premier contact | `sourcing`, `qualify`, `score`, `generate` |
+| `relanceur` | entretenir la conversation ouverte jusqu'à l'escalade | `score`, `generate`, `classify`, `decide` |
+
+**`agent_id` est facultatif.** Sans lui, l'appel se comporte exactement comme avant :
+le backend fournit tout dans le corps et décide seul. Rien à migrer dans l'immédiat.
+
+**Avec lui**, le service vérifie — dans cet ordre — que l'agent appartient à ce
+workspace (404 sinon), qu'il est `actif` (409 sinon) et que son rôle autorise l'acte
+demandé (403 sinon). Puis **sa configuration l'emporte** sur ce que joint l'appelant :
+mission (`objectif_principal`), voix (`ton_de_voix`), canaux (`canaux_actifs`),
+pondérations (`scoring_config`) et paliers de relance. C'est délibéré — laisser une
+requête redéfinir le ton au coup par coup rouvrirait la dérive que l'Agent Builder
+existe pour empêcher.
+
+> L'**ICP reste au niveau du workspace** (source unique, CDCF §0 garde-fou n°2) :
+> il est partagé par tous les agents du client. Seule la manière de travailler
+> appartient à l'agent.
 
 ---
 
@@ -27,6 +55,9 @@
 |---|---|---|
 | `200` | OK | lire la réponse |
 | `401` | `X-Internal-Key` manquante/invalide | vérifier le secret partagé |
+| `403` | **l'agent n'a pas cette capacité** | appeler avec l'agent dont c'est le poste |
+| `404` | **agent inconnu dans ce workspace** | vérifier `agent_id` (ou l'omettre) |
+| `409` | **agent non activé par le client** | l'activer dans l'Agent Builder |
 | `422` | payload invalide (validation) | corriger le corps de la requête |
 | `429` | **plafond de coût du workspace atteint** | ne plus appeler ce workspace (ou relever le plafond) |
 | `502` | réponse LLM invalide | réessayer / journaliser |
@@ -218,9 +249,45 @@ Garanties :
 
 ---
 
-### `GET /api/v1/costs/{workspace_id}` — Coûts cumulés (pour FINANCE)
+### `GET /api/v1/builder/config/{workspace_id}` — Le client et son équipe (aucun LLM)
+
+L'ICP et la zone sont au niveau du workspace ; la mission, la voix et les canaux
+appartiennent à chaque agent. Un client sans configuration reçoit **200** avec une
+équipe par défaut (un prospecteur, un relanceur, tous deux `configuration_incomplete`,
+en supervision, email seul) — un compte neuf n'est pas une erreur.
+
 ```json
-{ "workspace_id": "UUID", "input_tokens": 1520, "output_tokens": 340, "cost": 0.0057 }
+{ "workspace_id": "UUID", "zone": "Genève", "langue": "fr",
+  "icp": { "secteurs_inclus": ["conseil"], "taille_min": 5, "taille_max": 30, … },
+  "agents": [
+    { "agent_id": "UUID", "role": "prospecteur", "nom": "Prospecteur",
+      "objectif_principal": "…", "ton_de_voix": "professionnel", "statut": "actif",
+      "autonomy_level": "supervision", "canaux_actifs": ["email"],
+      "scoring_config": {…}, "paliers": […], "seuil_confiance": 0.7 },
+    { "agent_id": "UUID", "role": "relanceur", … }
+  ] }
+```
+
+> Les `agent_id` sont **stables** : ils sont dérivés du workspace et du rôle, donc
+> identiques d'un appel à l'autre même si rien n'est encore persisté.
+
+### `GET /api/v1/builder/config/{workspace_id}/agents/{agent_id}` — Un agent précis
+
+Rend le seul objet `ConfigAgent`, ou **404** si l'agent n'appartient pas à ce workspace.
+
+---
+
+### `GET /api/v1/costs/{workspace_id}` — Coûts cumulés (pour FINANCE)
+
+Le total engage (c'est lui que le plafond protège) ; `par_agent` sert au diagnostic —
+savoir *lequel* des agents a dépensé. La clé `"-"` regroupe les appels sans `agent_id`.
+
+```json
+{ "workspace_id": "UUID", "input_tokens": 1520, "output_tokens": 340, "cost": 0.0057,
+  "par_agent": {
+    "dec21ef5-…": { "input_tokens": 1200, "output_tokens": 260, "cost": 0.0043 },
+    "-":          { "input_tokens": 320,  "output_tokens": 80,  "cost": 0.0014 }
+  } }
 ```
 
 ### `GET /health` — Santé (public)
@@ -247,6 +314,8 @@ curl -X POST http://localhost:8080/api/v1/ares/score \
 - **Fournir l'ICP** (depuis `workspace_icp_config`) dans les requêtes qualify/score.
 - **Gérer les secrets de canal** (Orange, CRM) — hors périmètre IA.
 - **Orchestrer** (séquençage, relances, envois) via n8n ; appeler l'IA aux points de décision.
+- **Joindre `agent_id`** quand l'action est portée par un agent nommé — c'est ce qui applique
+  sa configuration et interdit qu'il déborde de son poste. Facultatif, mais recommandé.
 
 ## 7. Ce que le backend n'a PAS à faire
 - Connaître la structure interne du service IA (seul le contrat ci-dessus compte).

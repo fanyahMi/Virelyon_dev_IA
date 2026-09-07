@@ -6,11 +6,10 @@ la requête (lead, ICP, config) ; l'IA ne lit jamais la base de données.
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.schemas.common import Meta
+from app.schemas.common import Meta, RequeteAgent
 
 
 # ----- Objets de domaine (passés par le backend) -----
@@ -50,8 +49,7 @@ class Palier(BaseModel):
 
 
 # ----- Qualification (§4.2 / prompt §5.1) -----
-class QualifyRequest(BaseModel):
-    workspace_id: UUID
+class QualifyRequest(RequeteAgent):
     lead: Lead
     icp: ICP
 
@@ -67,10 +65,11 @@ class QualifyResponse(QualifyResult):
 
 
 # ----- Scoring (§4.3 / §4.3.1) — logique pure -----
-class ScoreRequest(BaseModel):
-    workspace_id: UUID
+class ScoreRequest(RequeteAgent):
     lead: Lead
     icp: ICP
+    # Ignoré si `agent_id` est fourni : ce sont alors les pondérations de l'agent
+    # qui s'appliquent. Deux agents du même client peuvent noter différemment.
     scoring_config: ScoringConfig = Field(default_factory=ScoringConfig)
 
 
@@ -94,8 +93,13 @@ class EchangeHistorique(BaseModel):
     date: Optional[str] = None
 
 
-class GenerateRequest(BaseModel):
-    workspace_id: UUID
+class GenerateRequest(RequeteAgent):
+    """Les trois champs de voix ci-dessous sont **ignorés si `agent_id` est
+    fourni** : la configuration de l'agent l'emporte alors sur ce que joint
+    l'appelant. C'est délibéré — laisser une requête redéfinir le ton ou la
+    mission au coup par coup rouvrirait exactement la dérive que l'Agent Builder
+    existe pour empêcher."""
+
     lead: Lead
     etape: str = "J0"
     ton_de_voix: str = "professionnel"
@@ -119,8 +123,7 @@ class GenerateResponse(GenerateResult):
 
 
 # ----- Classification de réponse (§4.6 / prompt §5.3) -----
-class ClassifyRequest(BaseModel):
-    workspace_id: UUID
+class ClassifyRequest(RequeteAgent):
     message_entrant: str
     language: str = "fr"
 
@@ -143,8 +146,7 @@ class Action(str, Enum):
     arret = "arrêt"
 
 
-class DecideRequest(BaseModel):
-    workspace_id: UUID
+class DecideRequest(RequeteAgent):
     lead: Lead
     palier: Palier                 # palier de score du lead (§4.3.1)
     relances_effectuees: int = 0   # compteur de relances déjà envoyées (v1.1)

@@ -1,14 +1,7 @@
 {
-  "_commentaire": "Marché volontairement hors ICP de VIRELYON : prouve que le référentiel garantit la cohérence du vocabulaire, PAS le périmètre. Autonome, WhatsApp, ton chaleureux.",
+  "_commentaire": "Marché volontairement hors ICP de VIRELYON : prouve que le référentiel garantit la cohérence du vocabulaire, PAS le périmètre. Sert aussi de cas « équipe incomplète » : le prospecteur tourne en autonome, le relanceur n'est pas encore activé — tout appel le nommant doit être refusé (409), pas exécuté en silence.",
   "workspace_id": "096c84c1-cf60-4c2b-ab87-8132570a59f4",
-  "statut": "actif",
-  "objectif_principal": "Équiper les restaurants indépendants d'une solution de réservation en ligne.",
-  "ton_de_voix": "chaleureux",
   "langue": "fr",
-  "autonomy_level": "autonome",
-  "canaux_actifs": ["email", "whatsapp"],
-  "quotas_par_canal": { "email": 100, "whatsapp": 30 },
-  "seuil_confiance": 0.6,
   "icp": {
     "secteurs_inclus": ["restauration", "hotellerie"],
     "secteurs_exclus": [],
@@ -16,10 +9,29 @@
     "taille_max": 50,
     "roles_cibles": ["fondateur", "decideur", "directeur"]
   },
-  "scoring_config": {
-    "poids_fraicheur": 0.15,
-    "poids_completude": 0.25,
-    "poids_fit": 0.50,
-    "poids_engagement": 0.10
-  }
+  "agents": [
+    {
+      "role": "prospecteur",
+      "statut": "actif",
+      "objectif_principal": "Équiper les restaurants indépendants d'une solution de réservation en ligne.",
+      "ton_de_voix": "chaleureux",
+      "autonomy_level": "autonome",
+      "canaux_actifs": ["email", "whatsapp"],
+      "quotas_par_canal": { "email": 100, "whatsapp": 30 },
+      "seuil_confiance": 0.6,
+      "scoring_config": {
+        "poids_fraicheur": 0.15,
+        "poids_completude": 0.25,
+        "poids_fit": 0.50,
+        "poids_engagement": 0.10
+      }
+    },
+    {
+      "role": "relanceur",
+      "statut": "inactif",
+      "objectif_principal": "Relancer les restaurateurs contactés pendant la basse saison.",
+      "ton_de_voix": "chaleureux",
+      "canaux_actifs": ["whatsapp"]
+    }
+  ]
 }

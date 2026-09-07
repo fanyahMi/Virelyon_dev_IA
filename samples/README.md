@@ -27,6 +27,7 @@ Jeux de données prêts à l'emploi pour tester le service IA **avec ce qui est 
 | `icp_valider_contradiction.json` | `POST /api/v1/builder/icp/valider` | `valide: false` — 2 **erreurs** (min>max, secteur inclus ET exclu) |
 | `icp_valider_hors_referentiel.json` | `POST /api/v1/builder/icp/valider` | `valide: true` + 4 avertissements (« Marketing digital » → `marketing`, « CEO » → `fondateur`, « plomberie » inconnu, fourchette 10-12 trop étroite) |
 | `icp_valider_vide.json` | `POST /api/v1/builder/icp/valider` | `criteres_actifs: 0` — l'ICP ne filtre rien |
+| `sourcing_linkedin.json` | `POST /api/v1/sourcing/executer` | plan LinkedIn/Apify **simulé** : 1 requête par secteur, jeton masqué, plafond de dépense calculé, + 2 avertissements (CGU/RGPD, recherche floue) |
 
 ### Scoring ARES
 
@@ -40,10 +41,26 @@ Jeux de données prêts à l'emploi pour tester le service IA **avec ce qui est 
 | `score_hors_icp.json` | `POST /api/v1/ares/score` | **score bas** (secteur exclu → `fit = 0`) |
 | `score_incomplet.json` | `POST /api/v1/ares/score` | score bas (faible complétude) |
 | `decide_plafond.json` | `POST /api/v1/ares/decide` | **`"action": "arrêt"`** (plafond 3/3 atteint, `meta: null`) |
-| — | `GET /api/v1/costs/{id}` | coûts cumulés du workspace |
+| — | `GET /api/v1/costs/{id}` | coûts cumulés du workspace + détail `par_agent` |
 | — | `GET /health` | `{"status":"ok"}` |
 
 > Les 4 paliers du CDCF §4.3.1 sont couverts : `quasi_parfait` / `tres_forte` / `correcte` / `faible`.
+
+### L'équipe d'agents du client
+
+Le workspace `1111…1111` a deux agents actifs : un **prospecteur** et un **relanceur**.
+
+| Fichier | Endpoint | Résultat attendu |
+|---|---|---|
+| — | `GET /api/v1/builder/config/{id}` | l'ICP du client + ses 2 agents (missions, voix et canaux distincts) |
+| `agent_score_prospecteur.json` | `POST /api/v1/ares/score` | **81** — pondérations du prospecteur (fit 0.40, engagement 0.10) |
+| `agent_score_relanceur.json` | `POST /api/v1/ares/score` | **78** — *même lead*, pondérations du relanceur (engagement 0.40) |
+| `agent_refus_prospecteur_classify.json` | `POST /api/v1/ares/classify` | **403** — lire une réponse est le poste du relanceur |
+| `agent_refus_relanceur_sourcing.json` | `POST /api/v1/sourcing/executer` | **403** — prospecter est le poste du prospecteur |
+| `agent_inactif.json` | `POST /api/v1/ares/generate` | **409** — cet agent n'a pas été activé par le client |
+
+> Les deux fichiers `agent_score_*` ne diffèrent que par leur `agent_id` : c'est la
+> démonstration la plus courte que la configuration de l'agent pilote bien le résultat.
 
 ## Ce qui NÉCESSITE `ANTHROPIC_API_KEY` ⚠️ (sinon 503 propre)
 
@@ -60,6 +77,8 @@ Jeux de données prêts à l'emploi pour tester le service IA **avec ce qui est 
 | `classify_hors_scope.json` | `POST /api/v1/ares/classify` | Claude Haiku 4.5 | `Question hors-scope` |
 | `generate.json` | `POST /api/v1/ares/generate` | Claude Sonnet 4.6 | message de 1er contact (J0) |
 | `generate_relance.json` | `POST /api/v1/ares/generate` | Claude Sonnet 4.6 | relance J+7 tenant compte de l'historique |
+| `agent_generate_prospecteur.json` | `POST /api/v1/ares/generate` | Claude Sonnet 4.6 | 1er contact — mission du prospecteur, `canal: email` (son seul canal) |
+| `agent_generate_relanceur.json` | `POST /api/v1/ares/generate` | Claude Sonnet 4.6 | relance — mission du relanceur, ton chaleureux, email ou linkedin |
 | `decide_continuer.json` | `POST /api/v1/ares/decide` | Claude (plafond non atteint) | `continuer` |
 | `decide_escalade.json` | `POST /api/v1/ares/decide` | Claude (plafond non atteint) | `escalade` (réponse positive) |
 

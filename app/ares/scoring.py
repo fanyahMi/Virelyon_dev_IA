@@ -1,10 +1,19 @@
 """Scoring & priorisation (§4.3) + paliers de relance (§4.3.1).
 
 Logique PURE (aucun appel LLM) — donc testable unitairement sans réseau ni clé.
+
+Quand un agent est nommé, **ses** pondérations et **ses** paliers s'appliquent :
+un prospecteur qui ratisse peut valoriser la complétude, un relanceur qui doit
+choisir sur qui s'acharner valorisera l'engagement. Les constantes ci-dessous ne
+servent plus qu'aux appels sans agent nommé.
 """
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from typing import Optional
 
 from app.schemas.ares import ICP, Lead, Palier, ScoreRequest, ScoreResponse
+from app.schemas.config import ConfigAgent
 
 # Paliers (seuil, palier) triés du plus haut au plus bas — CDCF §4.3.1
 _PALIERS: list[tuple[int, Palier]] = [
@@ -68,8 +77,10 @@ def _engagement(lead: Lead) -> float:
     return min(1.0, 0.3 * len(signaux))
 
 
-def compute_score(req: ScoreRequest) -> ScoreResponse:
-    cfg = req.scoring_config
+def compute_score(
+    req: ScoreRequest, agent: Optional[ConfigAgent] = None
+) -> ScoreResponse:
+    cfg = agent.scoring_config if agent else req.scoring_config
     comp = {
         "fraicheur": _fraicheur(req.lead),
         "completude": _completude(req.lead),
@@ -86,6 +97,12 @@ def compute_score(req: ScoreRequest) -> ScoreResponse:
         + cfg.poids_engagement * comp["engagement"]
     )
     score = max(0, min(100, round(100 * raw / total_poids)))
-    palier = next(p for seuil, p in _PALIERS if score >= seuil)
+    # `agent.paliers` est toujours renseigné par le chargement de config, mais on
+    # ne le suppose pas : un palier manquant ferait planter une note parfaitement
+    # calculée, là où les paliers du CDCF sont un repli acceptable.
+    if agent and agent.paliers:
+        palier = agent.palier_pour(score)
+    else:
+        palier = next(p for seuil, p in _PALIERS if score >= seuil)
     breakdown = {**{k: round(v, 3) for k, v in comp.items()}, "poids": cfg.model_dump()}
     return ScoreResponse(score=score, breakdown=breakdown, palier=palier)

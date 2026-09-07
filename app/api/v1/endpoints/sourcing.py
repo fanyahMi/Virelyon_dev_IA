@@ -6,6 +6,7 @@ valider et démontrer la chaîne avant d'avoir les clés d'API.
 """
 from fastapi import APIRouter, Depends
 
+from app.builder import habilitation
 from app.core.security import verify_caller
 from app.schemas.sourcing import ExecuterPlanRequest, ExecuterPlanResponse
 from app.sourcing.executeur import executer_plan
@@ -19,5 +20,9 @@ async def executer(req: ExecuterPlanRequest):
 
     Le secteur de chaque lead est canonisé à la collecte : sans ça, le filtrage
     ICP échouerait sur des leads parfaitement valides.
+
+    Capacité réservée au **prospecteur** : c'est le seul poste dont le métier est
+    d'aller chercher des entreprises qu'on ne connaît pas encore.
     """
+    habilitation.resoudre(req.workspace_id, req.agent_id, "sourcing")
     return await executer_plan(req)

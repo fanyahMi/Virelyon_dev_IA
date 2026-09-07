@@ -36,14 +36,20 @@ class Gateway:
         self.provider = provider
 
     async def complete_json(
-        self, tier: str, system: str, user: str, workspace_id, max_tokens: int | None = None
+        self,
+        tier: str,
+        system: str,
+        user: str,
+        workspace_id,
+        max_tokens: int | None = None,
+        agent_id=None,
     ) -> tuple[dict, dict]:
         settings = get_settings()
         model = modele_pour(tier)
         mt = max_tokens or settings.default_max_tokens
 
         # Cache (§5.4) : un appel identique déjà vu est renvoyé gratuitement.
-        key = response_cache.make_key(workspace_id, tier, system, user, mt)
+        key = response_cache.make_key(workspace_id, tier, system, user, mt, agent_id)
         cached = response_cache.get(key)
         if cached is not None:
             info = {"model_used": model, "input_tokens": 0, "output_tokens": 0,
@@ -53,7 +59,7 @@ class Gateway:
         # Miss → on vérifie le plafond de coût AVANT l'appel payant (§8.5).
         cost_tracker.enforce_limit(workspace_id, settings.max_cost_per_workspace)
         text, in_tok, out_tok = await self.provider.generate(model, system, user, mt)
-        cost = cost_tracker.record(workspace_id, model, in_tok, out_tok)
+        cost = cost_tracker.record(workspace_id, model, in_tok, out_tok, agent_id)
         data = _extract_json(text)
         response_cache.set(key, data)
         info = {

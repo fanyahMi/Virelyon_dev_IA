@@ -1,11 +1,11 @@
 """Contrats du sourcing — exécution d'un plan de recherche sur les sources externes."""
 from typing import Literal, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.schemas.ares import ICP, Lead
 from app.schemas.builder import Diagnostic
+from app.schemas.common import RequeteAgent
 
 
 class RequeteHTTP(BaseModel):
@@ -26,13 +26,16 @@ class ResultatSource(BaseModel):
     # `ok` : appel réussi · `simule` : dry_run · `non_configuree` : clé absente
     # `non_implemente` : connecteur pas encore écrit · `erreur` : appel en échec
     statut: Literal["ok", "simule", "non_configuree", "non_implemente", "erreur"]
+    # Leads ramenés par une source de DÉCOUVERTE.
     nb_leads: int = 0
+    # Leads complétés par une source d'ENRICHISSEMENT — elle n'en crée aucun,
+    # compter ses résultats dans `nb_leads` gonflerait le volume collecté.
+    nb_enrichis: int = 0
     requetes: list[RequeteHTTP] = Field(default_factory=list)
     erreur: Optional[str] = None
 
 
-class ExecuterPlanRequest(BaseModel):
-    workspace_id: UUID
+class ExecuterPlanRequest(RequeteAgent):
     icp: ICP
     sources: list[str] = Field(default_factory=list)
     zone: Optional[str] = None

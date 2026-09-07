@@ -1,12 +1,28 @@
 {
   "workspace_id": "11111111-1111-1111-1111-111111111111",
   "icp": {
-    "secteurs_inclus": ["marketing", "communication", "developpement"],
-    "secteurs_exclus": ["hotellerie", "restauration"],
+    "secteurs_inclus": [
+      "marketing",
+      "communication",
+      "developpement"
+    ],
+    "secteurs_exclus": [
+      "hotellerie",
+      "restauration"
+    ],
     "taille_min": 5,
     "taille_max": 30,
-    "roles_cibles": ["fondateur", "decideur"]
+    "roles_cibles": [
+      "fondateur",
+      "decideur"
+    ]
   },
-  "sources": ["google_maps", "apollo", "site_web", "hunter"],
-  "zone": "Genève"
+  "sources": [
+    "hunter_discover",
+    "google_maps",
+    "apollo",
+    "site_web",
+    "hunter"
+  ],
+  "zone": "Genève, Suisse"
 }

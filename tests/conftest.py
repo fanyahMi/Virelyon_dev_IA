@@ -21,6 +21,7 @@ os.environ.update(
     APOLLO_API_KEY="",
     GOOGLE_PLACES_API_KEY="",
     HUNTER_API_KEY="",
+    APIFY_API_TOKEN="",
 )
 
 import pytest
@@ -66,11 +67,21 @@ def use_provider():
 
 
 class FauxClientHTTP:
-    """Client httpx factice : rend une charge JSON, ou lève l'exception fournie."""
+    """Client httpx factice : rend une charge JSON, ou lève l'exception fournie.
 
-    def __init__(self, charge=None, exception=None) -> None:
-        self.charge = charge
+    `get` et `post` sont tous deux couverts : Hunter interroge son domain-search
+    en GET là où Apollo, Places et Discover postent.
+
+    Les réponses sont routées par URL. Tous les connecteurs importent le **même**
+    objet `httpx` : remplacer `httpx.AsyncClient` vaut pour tout le monde, on ne
+    peut donc pas donner une charge différente « par module ». Router sur l'URL
+    est ce qui permet de tester une chaîne découverte → enrichissement.
+    """
+
+    def __init__(self, routes=None, exception=None) -> None:
+        self.routes = routes or {}
         self.exception = exception
+        self.appels: list[tuple[str, str]] = []
 
     async def __aenter__(self):
         return self
@@ -78,32 +89,62 @@ class FauxClientHTTP:
     async def __aexit__(self, *_):
         return False
 
-    async def post(self, *_a, **_kw):
+    def _repondre(self, methode: str, url: str):
+        self.appels.append((methode, url))
         if self.exception is not None:
             raise self.exception
         import httpx
 
-        return httpx.Response(
-            200, json=self.charge, request=httpx.Request("POST", "http://test")
+        charge = next(
+            (c for fragment, c in self.routes.items() if fragment in url),
+            # Fragment vide = charge unique, valable pour toutes les URL.
+            self.routes.get(""),
         )
+        return httpx.Response(
+            200, json=charge, request=httpx.Request(methode, url)
+        )
+
+    async def post(self, url="", *_a, **_kw):
+        return self._repondre("POST", url)
+
+    async def get(self, url="", *_a, **_kw):
+        return self._repondre("GET", url)
 
 
 @pytest.fixture
 def faux_http(monkeypatch):
-    """Remplace le client httpx d'un connecteur, et son registre côté exécuteur."""
-    def _set(module: str, charge=None, exception=None, cle="cle-de-test"):
+    """Remplace le client httpx des connecteurs, et le registre côté exécuteur.
+
+    `source` désigne le ou les connecteurs qui reçoivent la clé : les autres
+    restent sans clé, donc en statut `non_configuree`, ce qui isole la source
+    testée. `charge` sert une réponse unique ; `routes` en associe une par
+    fragment d'URL, pour enchaîner plusieurs sources dans un même test.
+    """
+    def _set(
+        module: str = "",
+        charge=None,
+        exception=None,
+        cle="cle-de-test",
+        source="apollo",
+        routes=None,
+    ):
+        table = dict(routes or {})
+        if charge is not None:
+            table.setdefault("", charge)
         monkeypatch.setattr(
-            f"app.sourcing.{module}.httpx.AsyncClient",
-            lambda *a, **k: FauxClientHTTP(charge, exception),
+            "httpx.AsyncClient", lambda *a, **k: FauxClientHTTP(table, exception)
         )
+        avec_cle = {source} if isinstance(source, str) else set(source)
         from app.sourcing.apollo import Apollo
-        from app.sourcing.hunter import Hunter
-        from app.sourcing.linkedin import LinkedIn
+        from app.sourcing.hunter import Hunter, HunterDiscover
+        from app.sourcing.apify import ApifyLinkedIn
         from app.sourcing.places import Places
         from app.sourcing.site_web import SiteWeb
 
-        registre = {c.source: c for c in (Apollo(cle), Places(""), Hunter(""),
-                                         SiteWeb(), LinkedIn())}
+        classes = (Apollo, Places, HunterDiscover, Hunter, SiteWeb, ApifyLinkedIn)
+        registre = {
+            c.source: c for c in (k(cle if k.source in avec_cle else "") for k in classes)
+        }
         monkeypatch.setattr("app.sourcing.executeur._connecteurs", lambda: registre)
 
     return _set

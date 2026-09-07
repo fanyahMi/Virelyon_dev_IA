@@ -1,20 +1,41 @@
 {
-  "_commentaire": "Organisation Test ARES — celle qui porte les 8 leads de leads_raw. Profil de référence : agence de services B2B, prudente (supervision, email seul).",
+  "_commentaire": "Organisation Test ARES — celle qui porte les 8 leads de leads_raw. Profil de référence : agence de services B2B, prudente (supervision). Deux agents actifs : le prospecteur ouvre, le relanceur poursuit. Noter que le relanceur pondère l'engagement à 0.40 là où le prospecteur reste sur le fit : sur un prospect qui a déjà répondu, la correspondance ICP est acquise, c'est la réaction qui départage.",
   "workspace_id": "11111111-1111-1111-1111-111111111111",
-  "statut": "actif",
-  "objectif_principal": "Générer des rendez-vous qualifiés auprès d'agences de services B2B en croissance.",
-  "ton_de_voix": "professionnel",
   "langue": "fr",
   "zone": "Genève",
-  "autonomy_level": "supervision",
-  "canaux_actifs": ["email"],
-  "quotas_par_canal": { "email": 50 },
-  "seuil_confiance": 0.7,
   "icp": {
     "secteurs_inclus": ["conseil", "marketing", "communication"],
     "secteurs_exclus": ["hotellerie", "restauration"],
     "taille_min": 5,
     "taille_max": 30,
     "roles_cibles": ["fondateur", "decideur"]
-  }
+  },
+  "agents": [
+    {
+      "role": "prospecteur",
+      "statut": "actif",
+      "objectif_principal": "Générer des rendez-vous qualifiés auprès d'agences de services B2B en croissance.",
+      "ton_de_voix": "professionnel",
+      "autonomy_level": "supervision",
+      "canaux_actifs": ["email"],
+      "quotas_par_canal": { "email": 50 },
+      "seuil_confiance": 0.7
+    },
+    {
+      "role": "relanceur",
+      "statut": "actif",
+      "objectif_principal": "Relancer les prospects déjà contactés jusqu'à une réponse claire, puis passer la main à un commercial.",
+      "ton_de_voix": "chaleureux",
+      "autonomy_level": "supervision",
+      "canaux_actifs": ["email", "linkedin"],
+      "quotas_par_canal": { "email": 80, "linkedin": 20 },
+      "seuil_confiance": 0.6,
+      "scoring_config": {
+        "poids_fraicheur": 0.10,
+        "poids_completude": 0.15,
+        "poids_fit": 0.35,
+        "poids_engagement": 0.40
+      }
+    }
+  ]
 }

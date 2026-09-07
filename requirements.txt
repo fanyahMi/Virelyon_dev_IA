@@ -5,7 +5,7 @@ pydantic-settings>=2.4.0
 httpx>=0.27.0
 pytest>=8.0.0
 
-# Fournisseur LLM par defaut : n'importe quelle API compatible /chat/completions
-# (Mistral, Groq, OpenAI, Ollama, OpenRouter...) via httpx, deja present.
-# Claude est OPTIONNEL : ne decommenter que si LLM_PROVIDER=anthropic.
-# anthropic>=0.40.0
+# Fournisseur LLM. Le service sait aussi parler a n'importe quelle API
+# compatible /chat/completions (Mistral, Groq, OpenAI, Ollama...) via httpx,
+# deja present : dans ce cas le paquet ci-dessous devient inutile.
+anthropic>=0.40.0

@@ -1,15 +1,17 @@
 """Tests du sourcing : simulation sans clé, mapping des résultats, filtrage ICP."""
 import asyncio
+import re
 
 import httpx
 import pytest
 
-from app.schemas.ares import ICP
+from app.schemas.ares import ICP, Lead
 from app.schemas.builder import BlocRecherche
 from app.schemas.sourcing import ExecuterPlanRequest
 from app.sourcing.apollo import Apollo
-from app.sourcing.base import construire_lead
+from app.sourcing.base import construire_lead, domaine_de
 from app.sourcing.executeur import executer_plan
+from app.sourcing.hunter import Hunter, HunterDiscover
 from tests.conftest import HEADERS
 
 WID = "11111111-1111-1111-1111-111111111111"
@@ -40,17 +42,33 @@ def test_dry_run_n_appelle_rien_et_montre_les_requetes():
     assert res.leads == []
 
 
+def _porte_une_cle(nom: str) -> bool:
+    """« key » comme mot entier — pas comme fragment.
+
+    `x-api-key` et `api_key` en portent une ; `q_organization_keyword_tags`,
+    filtre métier d'Apollo, n'en porte pas.
+    """
+    return "key" in re.split(r"[^a-z0-9]+", nom.lower())
+
+
 def test_dry_run_ne_divulgue_jamais_la_cle():
-    """Tout paramètre d'authentification doit être masqué dans l'aperçu."""
-    res = _executer(sources=["apollo", "google_maps"], zone="Lyon")
+    """Tout paramètre d'authentification doit être masqué dans l'aperçu.
+
+    En-têtes ET paramètres d'URL : Hunter passe sa clé en `?api_key=`, où un
+    secret fuite d'autant plus facilement (journaux d'accès, referers).
+    """
+    res = _executer(
+        sources=["apollo", "google_maps", "hunter_discover", "hunter"], zone="Lyon"
+    )
     params_auth = 0
     for source in res.par_source:
         for requete in source.requetes:
-            for nom, valeur in requete.entetes.items():
-                if "key" in nom.lower():
-                    params_auth += 1
-                    assert valeur == "***", f"{nom} n'est pas masqué"
-    assert params_auth >= 2  # apollo + places
+            for origine in (requete.entetes, requete.params):
+                for nom, valeur in origine.items():
+                    if _porte_une_cle(nom):
+                        params_auth += 1
+                        assert valeur == "***", f"{nom} n'est pas masqué"
+    assert params_auth >= 4  # apollo + places + les deux endpoints Hunter
 
 
 def test_dry_run_transmet_les_filtres_du_plan():
@@ -70,14 +88,14 @@ def test_limite_plafonne_la_taille_de_page():
 
 # ----- Sources non branchées -------------------------------------------------
 def test_sources_non_implementees_sont_declarees_explicitement():
-    res = _executer(sources=["linkedin", "hunter", "site_web"])
-    statuts = {r.source: r.statut for r in res.par_source}
-    assert statuts == {
-        "linkedin": "non_implemente",
-        "hunter": "non_implemente",
-        "site_web": "non_implemente",
-    }
-    assert all(r.erreur for r in res.par_source)
+    """`site_web` reste le seul connecteur non écrit : il attend l'extraction LLM.
+
+    LinkedIn n'en fait plus partie depuis qu'Apify l'exécute.
+    """
+    res = _executer(sources=["site_web"])
+    site_web = next(r for r in res.par_source if r.source == "site_web")
+    assert site_web.statut == "non_implemente"
+    assert site_web.erreur
 
 
 # ----- Clé absente -----------------------------------------------------------
@@ -193,6 +211,265 @@ def test_les_leads_hors_icp_sont_ecartes(faux_http):
     res = _executer(dry_run=False)
     assert [lead.nom for lead in res.leads] == ["Agence Nova"]
     assert res.rejetes_hors_icp == 1
+
+
+# ----- Hunter Discover : découverte -----------------------------------------
+def _bloc_discover(**filtres):
+    return BlocRecherche(source="hunter_discover", type="filtres", filtres=filtres)
+
+
+# Forme réelle de la réponse Discover : ni industrie ni effectif n'y figurent.
+CHARGE_DISCOVER = {
+    "data": [
+        {
+            "domain": "studiocrea.co",
+            "organization": "Studio Créa",
+            "emails_count": {"personal": 12, "generic": 2, "total": 14},
+        },
+        {"domain": "sans-nom.co"},  # ignoré : pas de nom d'entreprise
+    ]
+}
+
+
+def test_discover_attribue_le_secteur_demande(faux_http):
+    # Discover ne rend pas l'industrie : le secteur est celui qu'on a filtré.
+    faux_http("hunter", charge=CHARGE_DISCOVER)
+
+    leads = asyncio.run(
+        HunterDiscover("cle-de-test").executer(
+            _bloc_discover(industries_par_secteur={"marketing": ["Marketing Services"]}),
+            limite=10,
+        )
+    )
+    assert len(leads) == 1
+    lead = leads[0]
+    assert lead.nom == "Studio Créa"
+    assert lead.secteur == "marketing"
+    # Le domaine devient le site web : c'est la clé de l'enrichissement qui suit.
+    assert lead.contact["site_web"] == "https://studiocrea.co"
+    assert lead.donnees_brutes["emails_connus"]["personal"] == 12
+    # Discover ne rend aucun effectif, même quand on filtre dessus.
+    assert lead.taille_effectif is None
+
+
+def test_discover_accepte_les_deux_enveloppes_de_reponse(faux_http):
+    """Hunter range tantôt les résultats dans `data`, tantôt sous `data.organizations`."""
+    faux_http("hunter", charge={"data": {"organizations": [{"organization": "Agence Nova"}]}})
+    leads = asyncio.run(
+        HunterDiscover("cle").executer(
+            _bloc_discover(industries_par_secteur={"design": ["Design Services"]}), limite=10
+        )
+    )
+    assert [lead.nom for lead in leads] == ["Agence Nova"]
+
+
+def test_discover_sans_critere_n_appelle_pas(faux_http):
+    """Un Discover sans industrie balaierait toute la base de Hunter."""
+    faux_http("hunter", exception=httpx.ConnectError("ne doit jamais être appelé"))
+    assert asyncio.run(HunterDiscover("cle").executer(_bloc_discover(), limite=10)) == []
+    assert HunterDiscover("cle").apercu(_bloc_discover(), 10) == []
+
+
+def test_discover_enveloppe_les_filtres_et_n_envoie_pas_de_pagination():
+    """`limit`/`offset` sont réservés au plan Premium : les envoyer casse l'appel.
+    Et un filtre non enveloppé dans `include` est rejeté (400)."""
+    bloc = _bloc_discover(
+        industries_par_secteur={"marketing": ["Marketing Services"]},
+        headcount=["1-10", "11-50"],
+        headquarters_location=[{"country": "FR"}],
+    )
+    corps = HunterDiscover("cle").apercu(bloc, 25)[0].corps
+    assert corps == {
+        "industry": {"include": ["Marketing Services"]},
+        "headcount": ["1-10", "11-50"],
+        "headquarters_location": {"include": [{"country": "FR"}]},
+    }
+    assert "limit" not in corps and "offset" not in corps
+
+
+def test_discover_interroge_un_secteur_a_la_fois():
+    bloc = _bloc_discover(
+        industries_par_secteur={"marketing": ["Marketing Services"], "design": ["Design Services"]}
+    )
+    requetes = HunterDiscover("cle").apercu(bloc, 25)
+    assert [r.corps["industry"]["include"] for r in requetes] == [
+        ["Marketing Services"],
+        ["Design Services"],
+    ]
+
+
+def test_discover_dedoublonne_entre_secteurs(faux_http):
+    """Une même entreprise peut ressortir sur deux industries."""
+    faux_http("hunter", charge=CHARGE_DISCOVER)
+    leads = asyncio.run(
+        HunterDiscover("cle").executer(
+            _bloc_discover(
+                industries_par_secteur={
+                    "marketing": ["Marketing Services"],
+                    "communication": ["Public Relations and Communications Services"],
+                }
+            ),
+            limite=10,
+        )
+    )
+    assert [lead.nom for lead in leads] == ["Studio Créa"]
+
+
+# ----- Hunter Domain Search : enrichissement --------------------------------
+def _bloc_hunter(**filtres):
+    return BlocRecherche(source="hunter", type="domain_search", filtres=filtres)
+
+
+CHARGE_EMAILS = {
+    "data": {
+        "emails": [
+            {
+                "value": "support@studiocrea.co",
+                "position": "Support Agent",
+                "seniority": "junior",
+                "confidence": 99,
+            },
+            {
+                "value": "marie@studiocrea.co",
+                "first_name": "Marie",
+                "last_name": "Dupont",
+                "position": "Founder",
+                "seniority": "executive",
+                "confidence": 88,
+            },
+        ]
+    }
+}
+
+
+def _lead_a_enrichir(site="https://www.studiocrea.co/contact", **kw):
+    return Lead(nom="Studio Créa", contact={"site_web": site}, **kw)
+
+
+def test_hunter_choisit_le_decideur_pas_le_plus_confiant(faux_http):
+    """L'email support a un meilleur indice : c'est le rôle visé qui prime."""
+    faux_http("hunter", charge=CHARGE_EMAILS)
+    lead = _lead_a_enrichir()
+
+    nb = asyncio.run(
+        Hunter("cle").enrichir([lead], _bloc_hunter(seniority=["executive"]), limite=10)
+    )
+    assert nb == 1
+    assert lead.contact["email"] == "marie@studiocrea.co"
+    assert lead.contact["nom"] == "Marie Dupont"
+    assert lead.role_contact == "fondateur"
+    assert lead.donnees_brutes["confiance_email"] == 88
+    assert "hunter" in lead.donnees_brutes["sources"]
+
+
+def test_hunter_sans_niveau_demande_retombe_sur_la_confiance(faux_http):
+    faux_http("hunter", charge=CHARGE_EMAILS)
+    lead = _lead_a_enrichir()
+
+    asyncio.run(Hunter("cle").enrichir([lead], _bloc_hunter(), limite=10))
+    assert lead.contact["email"] == "support@studiocrea.co"
+
+
+def test_hunter_n_ecrase_pas_un_role_deja_identifie(faux_http):
+    faux_http("hunter", charge=CHARGE_EMAILS)
+    lead = _lead_a_enrichir(role_contact="directeur")
+
+    asyncio.run(Hunter("cle").enrichir([lead], _bloc_hunter(), limite=10))
+    assert lead.role_contact == "directeur"
+
+
+def test_hunter_ignore_les_leads_sans_domaine_ou_deja_pourvus(faux_http):
+    """Chaque appel évité est un crédit Hunter conservé."""
+    faux_http("hunter", exception=httpx.ConnectError("ne doit jamais être appelé"))
+    sans_site = Lead(nom="Inconnue")
+    deja = Lead(nom="Nova", contact={"site_web": "nova.co", "email": "a@nova.co"})
+
+    nb = asyncio.run(Hunter("cle").enrichir([sans_site, deja], _bloc_hunter(), limite=10))
+    assert nb == 0
+
+
+def test_hunter_sans_email_trouve_ne_compte_pas(faux_http):
+    faux_http("hunter", charge={"data": {"emails": []}})
+    lead = _lead_a_enrichir()
+
+    nb = asyncio.run(Hunter("cle").enrichir([lead], _bloc_hunter(), limite=10))
+    assert nb == 0
+    assert "email" not in lead.contact
+
+
+def test_hunter_dry_run_montre_un_gabarit_pas_un_domaine_invente():
+    requetes = Hunter("cle").apercu(_bloc_hunter(seniority=["executive"]), 10)
+    assert requetes[0].params["domain"] == "{domaine-du-lead}"
+    assert requetes[0].params["seniority"] == "executive"
+
+
+# ----- Extraction de domaine -------------------------------------------------
+@pytest.mark.parametrize(
+    "site, attendu",
+    [
+        ("https://www.studiocrea.co/fr/contact", "studiocrea.co"),
+        ("studiocrea.co", "studiocrea.co"),
+        ("http://Studio-Crea.CO:8080", "studio-crea.co"),
+        ("", None),
+    ],
+)
+def test_domaine_de(site, attendu):
+    assert domaine_de(Lead(nom="A", contact={"site_web": site})) == attendu
+
+
+def test_domaine_de_sans_contact():
+    assert domaine_de(Lead(nom="A")) is None
+
+
+# ----- Enchaînement découverte → enrichissement ------------------------------
+def test_l_enrichissement_ne_touche_que_les_leads_retenus(faux_http):
+    """Bout en bout : découverte → filtrage ICP → enrichissement.
+
+    Le lead hors ICP est écarté AVANT l'enrichissement. Un seul lead est donc
+    enrichi sur les deux découverts : les crédits Hunter ne partent pas sur des
+    leads déjà jetés.
+    """
+    charge_apollo = {
+        "people": [
+            {
+                "title": "Founder",
+                "organization": {
+                    "name": "Agence Nova",
+                    "industry": "marketing",
+                    "website_url": "https://nova.co",
+                },
+            },
+            {
+                "title": "Founder",
+                "organization": {
+                    "name": "Hôtel du Port",
+                    "industry": "hotellerie",
+                    "website_url": "https://hotel.co",
+                },
+            },
+        ]
+    }
+    faux_http(
+        routes={"apollo.io": charge_apollo, "domain-search": CHARGE_EMAILS},
+        source=("apollo", "hunter"),
+    )
+
+    res = _executer(sources=["apollo", "hunter"], dry_run=False)
+
+    assert [lead.nom for lead in res.leads] == ["Agence Nova"]
+    assert res.rejetes_hors_icp == 1
+
+    hunter = next(r for r in res.par_source if r.source == "hunter")
+    assert hunter.statut == "ok"
+    assert hunter.nb_enrichis == 1  # et non 2 : l'hôtel n'a jamais été interrogé
+    # Un seul appel décrit, celui du lead retenu.
+    assert [r.params["domain"] for r in hunter.requetes] == ["nova.co"]
+
+    # Le lead enrichi devient exploitable : secteur, rôle ET email.
+    nova = res.leads[0]
+    assert nova.secteur == "marketing"
+    assert nova.contact["email"] == "marie@studiocrea.co"
+    assert nova.role_contact == "fondateur"
 
 
 # ----- Endpoint --------------------------------------------------------------

@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     apollo_api_key: str = ""
     google_places_api_key: str = ""
     hunter_api_key: str = ""
+    # Apify exécute l'acteur qui scrape LinkedIn (la plateforme n'a pas d'API
+    # de recherche). Absent = la source « linkedin » reste en `non_configuree`.
+    apify_api_token: str = ""
+    # Recherche d'email par l'acteur : +0,006 $ par profil, mais un lead LinkedIn
+    # sans email exige sinon un enrichissement Hunter — payant lui aussi.
+    apify_chercher_emails: bool = True
     # Plafond de coût cumulé par workspace ($) avant blocage (0 = illimité)
     max_cost_per_workspace: float = 0.0
 

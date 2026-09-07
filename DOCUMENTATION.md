@@ -69,22 +69,41 @@ Virelyon_IA/
 │   │   ├── config.py            # configuration + table modèles + prix
 │   │   └── security.py          # authentification service-à-service
 │   ├── gateway/
-│   │   ├── provider.py          # fournisseur LLM (Claude) + erreur "non configuré"
+│   │   ├── provider.py          # fournisseur LLM (Anthropic | OpenAI-compatible)
 │   │   ├── router.py            # passerelle : tier→modèle, appel, extraction JSON
-│   │   └── cost_tracker.py      # suivi des coûts par workspace
+│   │   ├── cache.py             # cache mémoire des réponses (coût 0 sur doublon)
+│   │   └── cost_tracker.py      # suivi des coûts par workspace ET par agent
 │   ├── ares/
 │   │   ├── scoring.py           # scoring & paliers de relance (logique PURE)
-│   │   └── agents.py            # qualify / generate / classify (via Claude)
+│   │   └── agents.py            # qualify / generate / classify / decide (via LLM)
+│   ├── builder/
+│   │   ├── referentiels.py      # vocabulaire canonique (secteurs, rôles, pays…)
+│   │   ├── icp.py               # validation (pure) + extraction d'ICP (LLM)
+│   │   ├── plan_recherche.py    # ICP → requêtes par source (pur, déterministe)
+│   │   ├── roles.py             # rôles d'agent et capacités associées
+│   │   ├── habilitation.py      # cet agent a-t-il le droit de faire cet appel ?
+│   │   └── config.py            # configuration du client et de ses agents
+│   ├── sourcing/
+│   │   ├── base.py              # interface des connecteurs + construction de Lead
+│   │   ├── executeur.py         # découverte → filtrage ICP → enrichissement
+│   │   ├── apify.py            # LinkedIn via l'acteur Apify (réserve juridique)
+│   │   └── apollo.py · hunter.py · places.py · site_web.py
 │   ├── prompts/
-│   │   └── ares.py              # prompts système (garde-fous non négociables)
+│   │   ├── ares.py              # prompts système (garde-fous non négociables)
+│   │   └── builder.py           # prompt d'extraction d'ICP
 │   ├── schemas/
-│   │   ├── common.py            # métadonnées de réponse (usage, coût)
-│   │   └── ares.py              # contrats d'entrée/sortie (Lead, ICP, requêtes…)
+│   │   ├── common.py            # socle des requêtes (RequeteAgent) + métadonnées
+│   │   ├── ares.py              # contrats d'entrée/sortie (Lead, ICP, requêtes…)
+│   │   ├── builder.py           # référentiels, diagnostics, plan de recherche
+│   │   ├── config.py            # ConfigWorkspace / ConfigAgent
+│   │   └── sourcing.py          # exécution d'un plan, résultats par source
 │   └── api/v1/
 │       ├── router.py            # regroupe les endpoints /api/v1
 │       └── endpoints/
 │           ├── health.py        # GET /health (public)
-│           ├── ares.py          # POST /ares/{qualify,score,generate,classify}
+│           ├── ares.py          # POST /ares/{qualify,score,generate,classify,decide}
+│           ├── builder.py       # référentiels, ICP, plan de recherche, config
+│           ├── sourcing.py      # POST /sourcing/executer
 │           └── costs.py         # GET /costs/{workspace_id}
 ├── tests/                       # pytest (provider LLM mocké — pas de réseau)
 ├── requirements.txt             # dépendances Python
@@ -196,6 +215,32 @@ Virelyon_IA/
 - `docker-compose.yml` — lancement dev (⚠️ le port n'est publié qu'en dev ; en prod le service reste interne).
 - `Makefile` — `install` / `test` / `run` / `docker`.
 - `.env.example` — variables (clé Claude, secret interne, plafond de coût).
+
+---
+
+
+## 4 bis. Le modèle d'agents (`builder/roles.py`, `builder/habilitation.py`)
+
+**Utilité :** un client n'a pas *un* ARES mais une **équipe d'agents nommés**. Sans ce
+modèle, « plusieurs agents » ne serait qu'un libellé sur l'écran — n'importe lequel
+pourrait exécuter n'importe quel appel.
+
+- `roles.py` — le registre : deux rôles (`prospecteur`, `relanceur`) et les capacités
+  de chacun. Ajouter un rôle se fait **ici, et nulle part ailleurs**.
+- `habilitation.py` — trois questions, dans cet ordre : l'agent appartient-il à ce
+  workspace (**404**), est-il activé (**409**), son poste autorise-t-il cet acte (**403**) ?
+- `schemas/config.py` — la frontière qui compte : l'**ICP appartient au workspace**
+  (source unique, CDCF §0 garde-fou n°2), la **manière de travailler appartient à
+  l'agent** (mission, voix, canaux, pondérations, paliers, autonomie).
+
+`agent_id` reste **facultatif** dans les requêtes : sans lui, le comportement d'origine
+est conservé. Avec lui, la configuration de l'agent **l'emporte** sur ce que joint
+l'appelant — sinon une requête pourrait redéfinir le ton au coup par coup et rouvrir
+la dérive que l'Agent Builder existe pour empêcher.
+
+> Ce qui **n'existe pas** : rien ne déclenche ces agents. Le service reste réactif —
+> il répond quand on l'appelle. Le moteur qui les fait travailler (n8n ou un
+> ordonnanceur côté backend) est hors de ce dépôt.
 
 ---
 

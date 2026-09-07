@@ -16,8 +16,17 @@ class ResponseCache:
         self.max_entries = max_entries
 
     @staticmethod
-    def make_key(workspace_id, tier: str, system: str, user: str, max_tokens: int) -> str:
-        raw = f"{workspace_id}|{tier}|{max_tokens}|{system}|{user}"
+    def make_key(
+        workspace_id, tier: str, system: str, user: str, max_tokens: int, agent_id=None
+    ) -> str:
+        """L'agent fait partie de la clé.
+
+        Deux agents du même client peuvent poser une question identique ; leur
+        faire partager une entrée de cache attribuerait le coût au premier arrivé
+        et rendrait le détail par agent trompeur. Un agent est un travailleur
+        isolé — son cache l'est aussi.
+        """
+        raw = f"{workspace_id}|{agent_id or '-'}|{tier}|{max_tokens}|{system}|{user}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def get(self, key: str):

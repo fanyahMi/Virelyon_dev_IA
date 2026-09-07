@@ -85,7 +85,7 @@ class ICPValiderResponse(BaseModel):
 
 # ----- Plan de recherche (ICP → requêtes exploitables par source) -----
 # Sources de DÉCOUVERTE : trouvent des entreprises qu'on ne connaît pas encore.
-SOURCES_DECOUVERTE = ("google_maps", "apollo", "linkedin", "openstreetmap")
+SOURCES_DECOUVERTE = ("google_maps", "apollo", "linkedin", "hunter_discover")
 # Sources d'ENRICHISSEMENT : complètent une entreprise DÉJÀ trouvée.
 SOURCES_ENRICHISSEMENT = ("site_web", "hunter")
 SOURCES_CONNUES = SOURCES_DECOUVERTE + SOURCES_ENRICHISSEMENT
@@ -94,7 +94,7 @@ SOURCES_CONNUES = SOURCES_DECOUVERTE + SOURCES_ENRICHISSEMENT
 class BlocRecherche(BaseModel):
     """Instructions prêtes à consommer pour une source."""
     source: str
-    # "requetes_texte" (Maps) · "filtres" (Apollo, LinkedIn)
+    # "requetes_texte" (Maps) · "filtres" (Apollo, LinkedIn, Hunter Discover)
     # "extraction" (site web) · "domain_search" (Hunter)
     type: str
     requetes: list[str] = Field(default_factory=list)

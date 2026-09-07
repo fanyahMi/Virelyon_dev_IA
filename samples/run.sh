@@ -50,6 +50,9 @@ call POST "$AI_URL/api/v1/builder/icp/valider" "$DIR/icp_valider_vide.json"
 echo "### /builder/plan-recherche — ICP → requêtes par source ###"
 call POST "$AI_URL/api/v1/builder/plan-recherche" "$DIR/plan_recherche.json"
 
+echo "### /sourcing/executer — LinkedIn via Apify (SIMULATION : rien n'est dépensé) ###"
+call POST "$AI_URL/api/v1/sourcing/executer" "$DIR/sourcing_linkedin.json"
+
 echo; echo "--- Scoring ARES ---"
 
 echo "### /score — lead DANS l'ICP, complet, 2 signaux (~96 → quasi_parfait) ###"
@@ -76,7 +79,27 @@ call POST "$AI_URL/api/v1/ares/score" "$DIR/score_incomplet.json"
 echo "### /decide — plafond de relance ATTEINT (3/3 → 'arrêt', déterministe) ###"
 call POST "$AI_URL/api/v1/ares/decide" "$DIR/decide_plafond.json"
 
-echo "### /costs — coûts cumulés du workspace ###"
+echo; echo "--- L'équipe d'agents du client ---"
+
+echo "### /builder/config — le client et ses agents (ICP partagé, missions distinctes) ###"
+call GET "$AI_URL/api/v1/builder/config/11111111-1111-1111-1111-111111111111"
+
+echo "### /score — MÊME lead, vu par le PROSPECTEUR (fit 0.40, engagement 0.10) ###"
+call POST "$AI_URL/api/v1/ares/score" "$DIR/agent_score_prospecteur.json"
+
+echo "### /score — MÊME lead, vu par le RELANCEUR (engagement 0.40) → note différente ###"
+call POST "$AI_URL/api/v1/ares/score" "$DIR/agent_score_relanceur.json"
+
+echo "### /classify — le PROSPECTEUR n'a pas ce poste → 403 attendu ###"
+call POST "$AI_URL/api/v1/ares/classify" "$DIR/agent_refus_prospecteur_classify.json"
+
+echo "### /sourcing/executer — le RELANCEUR n'a pas ce poste → 403 attendu ###"
+call POST "$AI_URL/api/v1/sourcing/executer" "$DIR/agent_refus_relanceur_sourcing.json"
+
+echo "### /generate — agent non activé par le client → 409 attendu ###"
+call POST "$AI_URL/api/v1/ares/generate" "$DIR/agent_inactif.json"
+
+echo "### /costs — coûts cumulés du workspace, avec le détail par agent ###"
 call GET "$AI_URL/api/v1/costs/11111111-1111-1111-1111-111111111111"
 
 echo; echo "======================================================"
@@ -115,6 +138,12 @@ call POST "$AI_URL/api/v1/ares/generate" "$DIR/generate.json"
 
 echo "### /generate — relance J+7 avec historique ###"
 call POST "$AI_URL/api/v1/ares/generate" "$DIR/generate_relance.json"
+
+echo "### /generate — 1er contact signé par le PROSPECTEUR (sa mission, email seul) ###"
+call POST "$AI_URL/api/v1/ares/generate" "$DIR/agent_generate_prospecteur.json"
+
+echo "### /generate — relance signée par le RELANCEUR (sa mission, email+linkedin) ###"
+call POST "$AI_URL/api/v1/ares/generate" "$DIR/agent_generate_relanceur.json"
 
 echo "### /decide — plafond NON atteint (1/3 → décision via Claude) ###"
 call POST "$AI_URL/api/v1/ares/decide" "$DIR/decide_continuer.json"

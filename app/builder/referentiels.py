@@ -170,6 +170,16 @@ _SYNONYMES: dict[str, str] = {
     "directeur general": "directeur",
     "cto": "directeur",
     "cmo": "directeur",
+    # Intitulés que Hunter rend le plus souvent au niveau `executive` : sans eux,
+    # ils retombaient en titre brut et manquaient l'égalité stricte du scoring.
+    "cfo": "directeur",
+    "coo": "directeur",
+    "director": "directeur",
+    "managing partner": "decideur",
+    "partner": "decideur",
+    "associe": "decideur",
+    "owner": "fondateur",
+    "proprietaire": "fondateur",
     "head of": "manager",
     "responsable": "manager",
     "chef de projet": "manager",
@@ -184,55 +194,100 @@ _SYNONYMES: dict[str, str] = {
 # Déterministe et versionné : une même config produit toujours les mêmes requêtes.
 #   maps    → requêtes texte pour Google Places
 #   apollo  → valeurs d'industrie de l'API Apollo (anglais)
+#   hunter  → valeurs d'industrie de Hunter Discover
+#
+# ⚠️ La colonne `hunter` est une **liste fermée** : Hunter rejette (400
+# `invalid_industry`) toute valeur absente de sa nomenclature. Les valeurs
+# ci-dessous ont été vérifiées une à une contre l'API — elles suivent la
+# nomenclature LinkedIn *révisée* (« Marketing Services », et non l'ancien
+# « Marketing & Advertising » qu'utilise encore Apollo). D'où deux colonnes
+# distinctes malgré leur ressemblance : elles ne sont pas interchangeables.
 LIBELLES_RECHERCHE: dict[str, dict[str, tuple[str, ...]]] = {
     "marketing": {
         "maps": ("agence marketing", "agence de publicité"),
         "apollo": ("marketing & advertising", "advertising"),
+        "hunter": ("Marketing Services", "Advertising Services"),
+        "linkedin": ("marketing",),
     },
     "communication": {
         "maps": ("agence de communication", "agence de relations publiques"),
         "apollo": ("public relations & communications",),
+        "hunter": ("Public Relations and Communications Services",),
+        "linkedin": ("communication",),
     },
     "conseil": {
         "maps": ("cabinet de conseil", "société de conseil"),
         "apollo": ("management consulting",),
+        "hunter": ("Business Consulting and Services",),
+        "linkedin": ("conseil",),
     },
     "developpement": {
         "maps": ("agence de développement web", "société informatique"),
         "apollo": ("information technology & services", "computer software"),
+        "hunter": ("IT Services and IT Consulting", "Software Development"),
+        "linkedin": ("développement logiciel",),
     },
     "design": {
         "maps": ("studio de design", "agence de design graphique"),
         "apollo": ("design", "graphic design"),
+        "hunter": ("Design Services", "Graphic Design"),
+        "linkedin": ("design",),
     },
     "rh": {
         "maps": ("cabinet de recrutement", "agence de ressources humaines"),
         "apollo": ("human resources", "staffing & recruiting"),
+        "hunter": ("Human Resources Services", "Staffing and Recruiting"),
+        "linkedin": ("ressources humaines",),
     },
     "formation": {
         "maps": ("organisme de formation", "centre de formation professionnelle"),
         "apollo": ("professional training & coaching",),
+        "hunter": ("Professional Training and Coaching",),
+        "linkedin": ("formation professionnelle",),
     },
     "juridique": {
         "maps": ("cabinet d'avocats", "conseil juridique"),
         "apollo": ("legal services", "law practice"),
+        "hunter": ("Legal Services", "Law Practice"),
+        "linkedin": ("juridique",),
     },
     "comptabilite": {
         "maps": ("cabinet d'expertise comptable", "cabinet comptable"),
         "apollo": ("accounting",),
+        "hunter": ("Accounting",),
+        "linkedin": ("expertise comptable",),
     },
     "evenementiel": {
         "maps": ("agence événementielle", "organisation d'événements"),
         "apollo": ("events services",),
+        "hunter": ("Events Services",),
+        "linkedin": ("événementiel",),
     },
     "traduction": {
         "maps": ("agence de traduction", "services de traduction"),
         "apollo": ("translation & localization",),
+        "hunter": ("Translation and Localization",),
+        "linkedin": ("traduction",),
     },
     "relation_presse": {
         "maps": ("agence de relations presse", "attaché de presse"),
         "apollo": ("public relations & communications",),
+        "hunter": ("Public Relations and Communications Services",),
+        "linkedin": ("relations presse",),
     },
+    # Secteurs hors services B2B : seule la colonne `hunter` est renseignée, car
+    # Hunter est la seule source à exiger une valeur d'un catalogue fermé. Maps et
+    # Apollo continuent de retomber sur la saisie du client, comme avant.
+    "hotellerie": {"hunter": ("Hospitality",)},
+    "restauration": {"hunter": ("Restaurants",)},
+    "retail": {"hunter": ("Retail",)},
+    "sante": {"hunter": ("Hospitals and Health Care",)},
+    "immobilier": {"hunter": ("Real Estate",)},
+    "industrie": {"hunter": ("Manufacturing",)},
+    "transport": {"hunter": ("Transportation, Logistics, Supply Chain and Storage",)},
+    "batiment": {"hunter": ("Construction", "Architecture and Planning")},
+    "education": {"hunter": ("Education Administration Programs",)},
+    "association": {"hunter": ("Non-profit Organizations",)},
 }
 
 # Intitulés de poste à cibler, par rôle canonique. Bilingue : les annuaires B2B
@@ -243,6 +298,48 @@ TITRES_PAR_ROLE: dict[str, tuple[str, ...]] = {
     "directeur": ("Director", "Directeur Général", "Head of", "CTO", "CMO"),
     "manager": ("Manager", "Responsable", "Chef de projet"),
     "operationnel": ("Specialist", "Chargé de", "Consultant"),
+}
+
+# --- LinkedIn (via Apify) -----------------------------------------------------
+# Tranches d'effectif de LinkedIn — **liste fermée de codes opaques**, vérifiée
+# contre le schéma de l'acteur. Le piège : `A` ne vaut PAS « 1-10 » mais
+# « Self-Employed ». Mapper naïvement A sur la première tranche décalerait tout
+# le tableau d'un cran, silencieusement.
+TRANCHES_LINKEDIN: tuple[tuple[str, int, int], ...] = (
+    ("A", 1, 1),          # Self-Employed
+    ("B", 1, 10),
+    ("C", 11, 50),
+    ("D", 51, 200),
+    ("E", 201, 500),
+    ("F", 501, 1000),
+    ("G", 1001, 5000),
+    ("H", 5001, 10000),
+    ("I", 10001, 10**9),
+)
+
+# Niveaux hiérarchiques LinkedIn, par rôle canonique. Identifiants numériques
+# fermés (`320` = Owner/Partner, `310` = CXO, `220` = Director…) : LinkedIn ne
+# filtre pas sur des intitulés libres. Plusieurs niveaux par rôle, car la
+# frontière entre « CXO » et « Owner » dépend de la façon dont la personne
+# s'est déclarée, pas de sa fonction réelle.
+SENIORITE_LINKEDIN_PAR_ROLE: dict[str, tuple[str, ...]] = {
+    "fondateur": ("320",),               # Owner / Partner
+    "decideur": ("310", "320"),          # CXO + Owner / Partner
+    "directeur": ("220", "300"),         # Director + Vice President
+    "manager": ("200", "210"),           # Entry Level Manager + Experienced Manager
+    "operationnel": ("110", "120"),      # Entry Level + Senior
+}
+
+
+# Niveau hiérarchique Hunter, par rôle canonique. Hunter ne filtre pas sur des
+# intitulés libres mais sur trois valeurs fermées — `junior`, `senior`, `executive`.
+# Sans ce filtre, un domain-search rend indifféremment le PDG et le support.
+SENIORITE_PAR_ROLE: dict[str, str] = {
+    "fondateur": "executive",
+    "decideur": "executive",
+    "directeur": "executive",
+    "manager": "senior",
+    "operationnel": "junior",
 }
 
 
@@ -326,3 +423,58 @@ def stabiliser(valeur: str) -> str:
 def normaliser_role(valeur: str) -> str | None:
     """`"CEO"` → `"fondateur"`. None si hors référentiel."""
     return _normaliser(valeur, ROLES)
+
+
+# --- Pays -----------------------------------------------------------------------
+# Hunter Discover ne géolocalise pas du texte libre : il exige un code ISO-3166
+# alpha-2. Cette table couvre les marchés visés par le produit ; tout autre pays
+# reste atteignable en saisissant directement son code (« PT », « BR »…).
+PAYS_ISO: dict[str, str] = {
+    "france": "FR",
+    "belgique": "BE",
+    "belgium": "BE",
+    "suisse": "CH",
+    "switzerland": "CH",
+    "luxembourg": "LU",
+    "canada": "CA",
+    "maroc": "MA",
+    "morocco": "MA",
+    "tunisie": "TN",
+    "algerie": "DZ",
+    "senegal": "SN",
+    "cote d'ivoire": "CI",
+    "madagascar": "MG",
+    "allemagne": "DE",
+    "germany": "DE",
+    "espagne": "ES",
+    "spain": "ES",
+    "italie": "IT",
+    "italy": "IT",
+    "portugal": "PT",
+    "pays bas": "NL",
+    "netherlands": "NL",
+    "royaume uni": "GB",
+    "united kingdom": "GB",
+    "angleterre": "GB",
+    "irlande": "IE",
+    "ireland": "IE",
+    "etats unis": "US",
+    "united states": "US",
+    "usa": "US",
+}
+
+
+def code_pays(valeur: str) -> str | None:
+    """Code ISO-3166 alpha-2 d'un pays saisi librement. **None si non reconnu.**
+
+    Rendre None plutôt que deviner : un mauvais code ferait prospecter le mauvais
+    pays en silence, ce qui est pire que ne pas filtrer du tout.
+    """
+    plat = aplatir(valeur)
+    if not plat:
+        return None
+    # Déjà un code ISO : on fait confiance au client plutôt que de le limiter à
+    # la table ci-dessus.
+    if re.fullmatch(r"[a-z]{2}", plat):
+        return plat.upper()
+    return PAYS_ISO.get(plat)

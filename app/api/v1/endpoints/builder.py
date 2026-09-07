@@ -4,7 +4,7 @@ Le service IA ne persiste rien : il fournit le vocabulaire, transforme du texte
 libre en ICP structuré, et vérifie qu'un ICP peut réellement fonctionner.
 C'est le backend qui enregistre le résultat dans `workspace_icp_config`.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from uuid import UUID
 
@@ -13,7 +13,7 @@ from app.builder import icp as icp_logic
 from app.builder import plan_recherche as plan_logic
 from app.core.security import verify_caller
 from app.gateway.router import Gateway, get_gateway
-from app.schemas.config import ConfigAgent
+from app.schemas.config import ConfigAgent, ConfigWorkspace
 from app.schemas.builder import (
     ICPExtraireRequest,
     ICPExtraireResponse,
@@ -46,14 +46,37 @@ def valider_icp(req: ICPValiderRequest):
     return icp_logic.valider_icp(req)
 
 
-@router.get("/config/{workspace_id}", response_model=ConfigAgent)
+@router.get("/config/{workspace_id}", response_model=ConfigWorkspace)
 def get_config(workspace_id: UUID):
-    """Configuration du client — ce qu'ARES doit savoir pour se comporter comme lui.
+    """Le client et son **équipe d'agents** — ce qu'ARES doit savoir pour se
+    comporter comme lui.
 
-    Un client sans configuration reçoit un défaut prudent (supervision, email
-    seul) : c'est l'état normal d'un compte qui vient d'être créé, pas une erreur.
+    L'ICP et la zone sont au niveau du workspace (source unique, CDCF §0) ; la
+    mission, la voix et les canaux appartiennent à chaque agent.
+
+    Un client sans configuration reçoit un défaut prudent : un prospecteur et un
+    relanceur, tous deux en `configuration_incomplete`, en supervision et sur
+    email seul. C'est l'état normal d'un compte qui vient d'être créé, pas une
+    erreur — d'où un 200 et jamais un 404.
     """
-    return config_logic.charger_config(workspace_id)
+    return config_logic.charger_workspace(workspace_id)
+
+
+@router.get("/config/{workspace_id}/agents/{agent_id}", response_model=ConfigAgent)
+def get_agent(workspace_id: UUID, agent_id: UUID):
+    """Un agent précis du client.
+
+    Chercher l'agent **dans** son workspace, et non dans un registre global, rend
+    structurellement impossible de lire la configuration de l'agent d'un autre
+    client — même en connaissant son identifiant.
+    """
+    agent = config_logic.charger_agent(workspace_id, agent_id)
+    if agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Aucun agent « {agent_id} » dans ce workspace.",
+        )
+    return agent
 
 
 @router.post("/plan-recherche", response_model=PlanRechercheResponse)
