@@ -37,6 +37,11 @@ class ResponseCache:
                 self._store.pop(next(iter(self._store)), None)  # éviction simple (FIFO)
             self._store[key] = (time.time() + self.ttl, data)
 
+    def delete(self, key: str) -> None:
+        """Retire une entrée — pour écarter une réponse mise en cache puis jugée invalide."""
+        with self._lock:
+            self._store.pop(key, None)
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()

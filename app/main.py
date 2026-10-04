@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.endpoints import health
 from app.api.v1.router import api_router
+from app.aura.service import DonneesInsuffisantes
 from app.core.config import ConfigurationModeleManquante, get_settings
 from app.gateway.cost_tracker import CostLimitExceeded
 from app.gateway.provider import (
@@ -40,6 +41,12 @@ def _erreur(code: int, detail: str) -> JSONResponse:
 @app.exception_handler(CostLimitExceeded)
 async def _plafond_atteint(_: Request, exc: CostLimitExceeded) -> JSONResponse:
     return _erreur(429, str(exc))
+
+
+@app.exception_handler(DonneesInsuffisantes)
+async def _donnees_insuffisantes(_: Request, exc: DonneesInsuffisantes) -> JSONResponse:
+    # Requête recevable mais vide de sens : le backend doit envoyer des données.
+    return _erreur(422, str(exc))
 
 
 @app.exception_handler(LLMNotConfiguredError)
